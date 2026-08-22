@@ -18,8 +18,8 @@ cleanly. What is real, and what is honestly not, is listed below.
 | Daily photo capture, front/side/back, ghost overlay of the last shot at that angle | Done — `app/capture.tsx`, with a UI-thread opacity slider and a thirds/plumb grid |
 | Private pods, 3–8 people, invite-only via link or 6-char code | Done — `app/pod/*`, deep link `podshot://pod/join?code=ABC123` |
 | Streak tracking + days-logged-this-month | Done — `src/lib/streak.ts`, animated ring on Today |
-| Friend feed, most recent day only | Done — `app/(tabs)/pods.tsx`; history is not scrollable by design |
-| Lightweight reactions, pod-only | Done — closed set of 5 emoji, one per person per check-in |
+| Friend feed, most recent day only | Done — `src/features/PodThread.tsx`, an iMessage-style thread; history is not scrollable by design |
+| Lightweight reactions, pod-only | Done — closed set of 5 emoji as iMessage-style tapbacks, one per person per check-in |
 | Privacy controls: face blur, local-first storage | Done — global per-user, see below |
 | Personal timelapse | Playback + save-frames-to-album done; **mp4 export not done** (needs a native encoder) |
 | Lightweight workout log: "I trained today" + note | Done |
@@ -88,6 +88,26 @@ justify once there is a server to pay for.
 Warm porcelain surfaces, a soft coral accent, generous rounding, and large
 numerals. Everything comes from `src/theme/tokens.ts` — one palette per scheme,
 a 4pt spacing scale, a rounded typeface (Nunito), and exactly three springs.
+
+### The pod reads as a chat
+
+The pod surface is a thread, not a feed of cards. Each person's photo arrives
+as a message from them - theirs on the left with an avatar, yours on the right
+in coral - so three pod-mates posting reads as *three people*, which a grid of
+tiles loses. Multiple angles from one person group as consecutive attachments,
+the note is its own caption bubble, and reactions attach as tapbacks on the
+bubble corner.
+
+Two details carry the product rule rather than just the look:
+
+- **The composer sits where a keyboard would be.** It is the only action
+  available, so the one-photo-a-day limit is stated exactly where you would
+  try to break it. Once the day is spent it closes to "That is today. Come
+  back tomorrow" - closed, not hidden.
+- **Who has not posted appears as a typing indicator**, pulsing dots and
+  "waiting on Theo, Priya" at the foot of the thread. The gap is named in the
+  thread without anyone having to say it, which is the whole accountability
+  mechanic.
 
 Motion is deliberate rather than decorative:
 

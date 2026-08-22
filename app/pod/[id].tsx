@@ -2,14 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Share, View } from 'react-native';
 
-import { Button, Card, EmptyState, Screen, Squish, Text } from '@/components';
-import type { FeedItem, Pod, User } from '@/db/types';
-import { CheckInCard } from '@/features/CheckInCard';
-import { PodGrid } from '@/features/PodGrid';
+import { Avatar, Button, Card, EmptyState, Screen, Squish, Text } from '@/components';
 import { POD_MAX_MEMBERS } from '@/db/queries';
+import type { Angle, FeedItem, Pod, User } from '@/db/types';
+import { PodThread } from '@/features/PodThread';
 import { useStore } from '@/state/AppStore';
 import { useTheme } from '@/theme';
 
@@ -17,12 +16,12 @@ export default function PodScreen() {
   const t = useTheme();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { me, pods, settings, feedForPod, members, react, leavePod } = useStore();
+  const { me, pods, settings, today, todayPhotos, feedForPod, members, react, leavePod } = useStore();
 
   const pod: Pod | undefined = pods.find((p) => p.id === id);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [roster, setRoster] = useState<User[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [showInvite, setShowInvite] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -36,6 +35,8 @@ export default function PodScreen() {
       void load();
     }, [load])
   );
+
+  const myAngles = useMemo(() => todayPhotos.map((p) => p.angle as Angle), [todayPhotos]);
 
   if (!pod) {
     return (
@@ -52,11 +53,11 @@ export default function PodScreen() {
   }
 
   const inviteUrl = Linking.createURL('/pod/join', { queryParams: { code: pod.invite_code } });
-  const shown = selected ? items.filter((i) => i.user.id === selected) : items;
   const full = roster.length >= POD_MAX_MEMBERS;
 
   return (
     <Screen>
+      {/* Chat-style header: back, pod identity, and the roster as a face pile. */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: t.space.md }}>
         <Squish
           scaleTo={0.88}
@@ -74,111 +75,120 @@ export default function PodScreen() {
         >
           <Ionicons name="chevron-back" size={18} color={t.colors.ink} />
         </Squish>
-        <Text style={{ fontSize: 24 }}>{pod.emoji}</Text>
-        <Text variant="heading" style={{ flex: 1 }} numberOfLines={1}>
-          {pod.name}
-        </Text>
+        <Text style={{ fontSize: 22 }}>{pod.emoji}</Text>
+        <View style={{ flex: 1 }}>
+          <Text variant="heading" numberOfLines={1}>
+            {pod.name}
+          </Text>
+          <Text variant="caption" color="inkFaint">
+            {items.length} of {roster.length} in today
+          </Text>
+        </View>
+        <Squish
+          scaleTo={0.9}
+          onPress={() => setShowInvite((v) => !v)}
+          style={{ flexDirection: 'row', alignItems: 'center' }}
+        >
+          {roster.slice(0, 4).map((u, i) => (
+            <View key={u.id} style={{ marginLeft: i === 0 ? 0 : -12 }}>
+              <Avatar id={u.id} name={u.display_name} size={28} />
+            </View>
+          ))}
+          {roster.length > 4 ? (
+            <View
+              style={{
+                marginLeft: -12,
+                width: 28,
+                height: 28,
+                borderRadius: 14,
+                backgroundColor: t.colors.surfaceAlt,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text variant="caption" color="inkSoft" style={{ fontSize: 10 }}>
+                +{roster.length - 4}
+              </Text>
+            </View>
+          ) : null}
+        </Squish>
       </View>
 
-      {/* -------------------------------------------------------- the board */}
-      <Card padded="lg" radiusKey="xxl" style={{ marginTop: t.space.xl }}>
-        <PodGrid
-          members={roster}
-          items={items}
-          meId={me?.id ?? ''}
-          blurMine={settings.blur_face === 1}
-          selectedId={selected}
-          onSelect={setSelected}
-          onCapture={() => router.push({ pathname: '/capture', params: { angle: 'front' } })}
-        />
-      </Card>
-
-      {/* -------------------------------------------------------------- invite */}
-      <Card padded="lg" radiusKey="xl" tint="surfaceAlt" level={0} style={{ marginTop: t.space.md }}>
-        <Text variant="label" color="inkSoft">
-          INVITE CODE
-        </Text>
-        <Text variant="title" style={{ letterSpacing: 6, marginTop: 4 }}>
-          {pod.invite_code}
-        </Text>
-        <Text variant="caption" color="inkFaint" style={{ marginTop: 4 }}>
-          {full
-            ? 'This pod is full. Small pods are the point.'
-            : 'Invite-only. A pod never appears in search or suggestions.'}
-        </Text>
-        <View style={{ flexDirection: 'row', gap: t.space.md, marginTop: t.space.lg }}>
-          <View style={{ flex: 1 }}>
-            <Button
-              label="Copy code"
-              variant="secondary"
-              icon="copy-outline"
-              onPress={async () => {
-                await Clipboard.setStringAsync(pod.invite_code);
-              }}
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Button
-              label="Share link"
-              icon="share-outline"
-              disabled={full}
-              onPress={() =>
-                void Share.share({
-                  message: `Join my Podshot pod "${pod.name}": ${inviteUrl}`,
-                })
-              }
-            />
-          </View>
-        </View>
-      </Card>
-
-      {/* ---------------------------------------------------------- today's feed */}
-      <View style={{ marginTop: t.space.xxl }}>
-        <Text variant="caption" color="inkSoft" eyebrow>
-          Today in this pod
-        </Text>
-        <View style={{ marginTop: t.space.md }}>
-          {shown.length ? (
-            shown.map((item, i) => (
-              <CheckInCard
-                key={item.checkin.id}
-                item={item}
-                index={i}
-                meId={me?.id ?? ''}
-                settings={settings}
-                onReact={async (cid, emoji) => {
-                  await react(cid, emoji);
-                  await load();
+      {/* Invite details hide behind the face pile - not permanent thread furniture. */}
+      {showInvite ? (
+        <Card padded="lg" radiusKey="xl" tint="surfaceAlt" level={0} style={{ marginTop: t.space.lg }}>
+          <Text variant="label" color="inkSoft">
+            INVITE CODE
+          </Text>
+          <Text variant="title" style={{ letterSpacing: 6, marginTop: 4 }}>
+            {pod.invite_code}
+          </Text>
+          <Text variant="caption" color="inkFaint" style={{ marginTop: 4 }}>
+            {full
+              ? 'This pod is full. Small pods are the point.'
+              : 'Invite-only. A pod never appears in search or suggestions.'}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: t.space.md, marginTop: t.space.lg }}>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="Copy code"
+                variant="secondary"
+                icon="copy-outline"
+                onPress={async () => {
+                  await Clipboard.setStringAsync(pod.invite_code);
                 }}
               />
-            ))
-          ) : (
-            <EmptyState
-              icon="hourglass-outline"
-              title="Quiet so far"
-              body="Nobody in this pod has checked in today."
-            />
-          )}
-        </View>
-      </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="Share link"
+                icon="share-outline"
+                disabled={full}
+                onPress={() =>
+                  void Share.share({
+                    message: `Join my Podshot pod "${pod.name}": ${inviteUrl}`,
+                  })
+                }
+              />
+            </View>
+          </View>
+          <Button
+            label="Leave pod"
+            variant="ghost"
+            onPress={() =>
+              Alert.alert(
+                'Leave this pod?',
+                'Your check-ins stay on your device. The pod stops seeing them.',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Leave',
+                    style: 'destructive',
+                    onPress: async () => {
+                      await leavePod(pod.id);
+                      router.replace('/(tabs)/pods');
+                    },
+                  },
+                ]
+              )
+            }
+            style={{ marginTop: t.space.sm }}
+          />
+        </Card>
+      ) : null}
 
-      <Button
-        label="Leave pod"
-        variant="ghost"
-        onPress={() =>
-          Alert.alert('Leave this pod?', 'Your check-ins stay on your device. The pod stops seeing them.', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Leave',
-              style: 'destructive',
-              onPress: async () => {
-                await leavePod(pod.id);
-                router.replace('/(tabs)/pods');
-              },
-            },
-          ])
-        }
-        style={{ marginTop: t.space.xxl }}
+      <PodThread
+        items={items}
+        members={roster}
+        meId={me?.id ?? ''}
+        settings={settings}
+        day={today}
+        myAngles={myAngles}
+        onReact={async (cid, emoji) => {
+          await react(cid, emoji);
+          await load();
+        }}
+        onCapture={(angle) => router.push({ pathname: '/capture', params: { angle } })}
       />
     </Screen>
   );

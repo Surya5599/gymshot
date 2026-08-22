@@ -35,7 +35,7 @@ app/                 expo-router routes (file = screen)
   pod/               [id] detail, new, join (deep-link target)
 src/theme/           tokens + ThemeProvider; nothing hardcodes a color
 src/components/      UI primitives (Text, Squish, Card, Segmented, ...)
-src/features/        composed, domain-aware pieces (CheckInCard)
+src/features/        composed, domain-aware pieces (PodThread)
 src/db/              schema + migrations + all SQL
 src/state/AppStore   the one store; screens never touch SQL directly
 src/lib/             date, ids, streak, photo files, health, reminders, demo
@@ -66,6 +66,10 @@ These are the point of the app, not preferences. Reject changes that break them:
   capped at 8.
 - One check-in per person per day, broadcast to every pod they belong to.
   Privacy settings are therefore **global per user**, never per pod.
+- The pod surface is a **chat thread** (`src/features/PodThread.tsx`), not a
+  card feed or a grid. The composer is the one-per-day rule made physical and
+  the waiting row is the accountability mechanic - do not replace either with
+  a plain button or a hidden state.
 
 ## Commands
 

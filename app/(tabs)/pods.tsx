@@ -2,14 +2,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View } from 'react-native';
-import Animated, { LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Card, EmptyState, Squish, TAB_BAR_HEIGHT, Text } from '@/components';
-import type { User } from '@/db/types';
-import { CheckInCard } from '@/features/CheckInCard';
-import { PodGrid } from '@/features/PodGrid';
-import { formatDay } from '@/lib/date';
+import { EmptyState, Squish, TAB_BAR_HEIGHT, Text } from '@/components';
+import type { Angle, User } from '@/db/types';
+import { PodThread } from '@/features/PodThread';
 import { useStore } from '@/state/AppStore';
 import { useTheme } from '@/theme';
 
@@ -17,9 +14,8 @@ export default function PodsScreen() {
   const t = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { me, pods, feed, missing, settings, today, react, refresh } = useStore();
+  const { me, pods, feed, missing, settings, today, todayPhotos, react, refresh } = useStore();
 
-  const [selected, setSelected] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   // feed (posted) plus missing (not posted) is exactly the roster across every
@@ -31,7 +27,7 @@ export default function PodsScreen() {
     return [...map.values()];
   }, [feed, missing]);
 
-  const visible = selected ? feed.filter((f) => f.user.id === selected) : feed;
+  const myAngles = useMemo(() => todayPhotos.map((p) => p.angle as Angle), [todayPhotos]);
 
   const padding = {
     paddingTop: insets.top + t.space.md,
@@ -42,9 +38,14 @@ export default function PodsScreen() {
   if (!pods.length) {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: t.colors.bg }} contentContainerStyle={padding}>
-        <Header onNew={() => router.push('/pod/new')} onJoin={() => router.push('/pod/join')} />
+        <Header
+          title="Pods"
+          subtitle="no pods yet"
+          onNew={() => router.push('/pod/new')}
+          onJoin={() => router.push('/pod/join')}
+        />
         <EmptyState
-          icon="people-outline"
+          icon="chatbubbles-outline"
           title="No pods yet"
           body="Accountability needs at least one other person. Start a pod and send the invite link to two or three friends."
           actionLabel="Create a pod"
@@ -53,6 +54,8 @@ export default function PodsScreen() {
       </ScrollView>
     );
   }
+
+  const posted = feed.length;
 
   return (
     <ScrollView
@@ -71,9 +74,14 @@ export default function PodsScreen() {
         />
       }
     >
-      <Header onNew={() => router.push('/pod/new')} onJoin={() => router.push('/pod/join')} />
+      <Header
+        title="All pods"
+        subtitle={`${posted} of ${roster.length} in today`}
+        onNew={() => router.push('/pod/new')}
+        onJoin={() => router.push('/pod/join')}
+      />
 
-      {/* Pod chips. "All pods" is the union board; a specific pod opens its page. */}
+      {/* Pod chips: this screen is the merged thread; a chip opens one pod. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -86,7 +94,7 @@ export default function PodsScreen() {
             <Squish
               key={p.id}
               scaleTo={0.94}
-              onPress={() => (p.id === 'all' ? setSelected(null) : router.push(`/pod/${p.id}`))}
+              onPress={() => p.id !== 'all' && router.push(`/pod/${p.id}`)}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -108,52 +116,42 @@ export default function PodsScreen() {
         })}
       </ScrollView>
 
-      <Card padded="lg" radiusKey="xxl" style={{ marginTop: t.space.xl }}>
-        <PodGrid
-          members={roster}
+      <View style={{ marginTop: t.space.sm }}>
+        <PodThread
           items={feed}
+          members={roster}
           meId={me?.id ?? ''}
-          blurMine={settings.blur_face === 1}
-          selectedId={selected}
-          onSelect={setSelected}
-          onCapture={() => router.push({ pathname: '/capture', params: { angle: 'front' } })}
+          settings={settings}
+          day={today}
+          myAngles={myAngles}
+          onReact={(id, emoji) => void react(id, emoji)}
+          onCapture={(angle) => router.push({ pathname: '/capture', params: { angle } })}
         />
-      </Card>
-
-      <Animated.View layout={LinearTransition} style={{ marginTop: t.space.xxl }}>
-        <Text variant="caption" color="inkSoft" eyebrow>
-          {selected ? 'Filtered' : formatDay(today)}
-        </Text>
-        <View style={{ marginTop: t.space.md }}>
-          {visible.length ? (
-            visible.map((item, i) => (
-              <CheckInCard
-                key={item.checkin.id}
-                item={item}
-                index={i}
-                meId={me?.id ?? ''}
-                settings={settings}
-                onReact={(id, emoji) => void react(id, emoji)}
-              />
-            ))
-          ) : (
-            <EmptyState
-              icon="sunny-outline"
-              title="Nobody has posted yet"
-              body="Be the one who goes first. The board fills in as your pod checks in."
-            />
-          )}
-        </View>
-      </Animated.View>
+      </View>
     </ScrollView>
   );
 }
 
-function Header({ onNew, onJoin }: { onNew: () => void; onJoin: () => void }) {
+function Header({
+  title,
+  subtitle,
+  onNew,
+  onJoin,
+}: {
+  title: string;
+  subtitle: string;
+  onNew: () => void;
+  onJoin: () => void;
+}) {
   const t = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-      <Text variant="title">Pods</Text>
+      <View>
+        <Text variant="title">{title}</Text>
+        <Text variant="caption" color="inkFaint">
+          {subtitle}
+        </Text>
+      </View>
       <View style={{ flexDirection: 'row', gap: t.space.sm }}>
         <RoundButton icon="enter-outline" onPress={onJoin} />
         <RoundButton icon="add" onPress={onNew} />
