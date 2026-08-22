@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "es2020",
+    "outDir": "../.logic-build",
+    "skipLibCheck": true,
+    "strict": true,
+    "types": []
+  },
+  "files": ["../src/lib/date.ts", "../src/lib/streak.ts"]
+}

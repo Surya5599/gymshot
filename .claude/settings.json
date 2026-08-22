@@ -1,5 +1,13 @@
 {
-  "enabledPlugins": {
-    "expo@claude-plugins-official": true
+  "permissions": {
+    "allow": [
+      "Bash(npm run typecheck)",
+      "Bash(npm run doctor)",
+      "Bash(npm run bundle)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx expo-doctor)",
+      "Bash(npx expo export:*)",
+      "Bash(npx expo install:*)"
+    ]
   }
 }
