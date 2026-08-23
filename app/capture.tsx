@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { CameraType, CameraView, useCameraPermissions } from 'expo-camera';
+import { CameraType, CameraView, FlashMode, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -32,6 +32,9 @@ const { width: SCREEN_W } = Dimensions.get('window');
 /** Off, then the three delays that matter: prop-the-phone, walk-back, re-pose. */
 const TIMER_OPTIONS = [0, 3, 5, 10] as const;
 
+/** Same cycle order the system camera uses. */
+const FLASH_OPTIONS = ['off', 'auto', 'on'] as const satisfies readonly FlashMode[];
+
 export default function CaptureScreen() {
   const router = useRouter();
   const db = useSQLiteContext();
@@ -47,6 +50,7 @@ export default function CaptureScreen() {
   const [shot, setShot] = useState<{ uri: string; width: number; height: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
+  const [flash, setFlash] = useState<FlashMode>('off');
   const [countdown, setCountdown] = useState<number | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
@@ -119,6 +123,10 @@ export default function CaptureScreen() {
     }
   }, [shot, angle, saveTodayPhoto, router]);
 
+  const cycleFlash = useCallback(() => {
+    setFlash((f) => FLASH_OPTIONS[(FLASH_OPTIONS.indexOf(f) + 1) % FLASH_OPTIONS.length]);
+  }, []);
+
   const cycleTimer = useCallback(() => {
     const next = TIMER_OPTIONS[(TIMER_OPTIONS.indexOf(timer as 0) + 1) % TIMER_OPTIONS.length];
     void setSetting('timer_seconds', next);
@@ -149,6 +157,7 @@ export default function CaptureScreen() {
           ref={cameraRef}
           style={styles.fill}
           facing={facing}
+          flash={flash}
           mode="picture"
           animateShutter={false}
           mirror={facing === 'front'}
@@ -194,6 +203,8 @@ export default function CaptureScreen() {
         disabled={!!shot || counting}
         showGrid={showGrid}
         onToggleGrid={() => setShowGrid((v) => !v)}
+        flash={flash}
+        onCycleFlash={cycleFlash}
       />
 
       <BottomBar
@@ -285,6 +296,8 @@ function TopBar({
   disabled,
   showGrid,
   onToggleGrid,
+  flash,
+  onCycleFlash,
 }: {
   angle: Angle;
   onAngle: (a: Angle) => void;
@@ -292,6 +305,8 @@ function TopBar({
   disabled: boolean;
   showGrid: boolean;
   onToggleGrid: () => void;
+  flash: FlashMode;
+  onCycleFlash: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -310,7 +325,10 @@ function TopBar({
         ) : (
           <View style={{ flex: 1 }} />
         )}
-        <GlassButton icon={showGrid ? 'grid' : 'grid-outline'} onPress={onToggleGrid} />
+        <View style={{ flexDirection: 'row', gap: t.space.sm }}>
+          <FlashButton mode={flash} onPress={onCycleFlash} />
+          <GlassButton icon={showGrid ? 'grid' : 'grid-outline'} onPress={onToggleGrid} />
+        </View>
       </View>
     </View>
   );
@@ -350,6 +368,42 @@ function TimerButton({ seconds, onPress }: { seconds: number; onPress: () => voi
       {armed ? (
         <Text variant="label" style={{ color: '#fff', fontSize: 14 }}>
           {seconds}s
+        </Text>
+      ) : null}
+    </Squish>
+  );
+}
+
+/**
+ * Cycles off -> auto -> on, and goes coral once it is not off, the same way the
+ * timer signals it is armed. Note the hardware flash only exists on the rear
+ * camera; on the front one - this screen's default - the mode is carried
+ * through to CameraView but most devices have nothing to fire.
+ */
+function FlashButton({ mode, onPress }: { mode: FlashMode; onPress: () => void }) {
+  const t = useTheme();
+  const armed = mode !== 'off';
+  return (
+    <Squish
+      scaleTo={0.88}
+      onPress={onPress}
+      hitSlop={8}
+      style={{
+        minWidth: 40,
+        height: 40,
+        paddingHorizontal: mode === 'auto' ? 10 : 0,
+        borderRadius: 20,
+        backgroundColor: armed ? t.colors.accent : 'rgba(0,0,0,0.42)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        gap: 3,
+      }}
+    >
+      <Ionicons name={armed ? 'flash' : 'flash-off-outline'} size={19} color="#fff" />
+      {mode === 'auto' ? (
+        <Text variant="label" style={{ color: '#fff', fontSize: 12 }}>
+          A
         </Text>
       ) : null}
     </Squish>
