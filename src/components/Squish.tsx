@@ -14,7 +14,7 @@ type Props = Omit<PressableProps, 'style'> & {
 };
 
 /**
- * The single interactive primitive. Everything tappable in Podshot squishes,
+ * The single interactive primitive. Everything tappable in GymShot squishes,
  * so touch feedback is consistent instead of per-screen improvisation.
  */
 export function Squish({ style, scaleTo = 0.96, haptic = 'light', onPress, children, ...rest }: Props) {

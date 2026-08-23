@@ -1,24 +1,24 @@
 {
   "expo": {
-    "name": "Podshot",
-    "slug": "podshot",
+    "name": "GymShot",
+    "slug": "gymshot",
     "version": "0.1.0",
-    "scheme": "podshot",
+    "scheme": "gymshot",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "org.universalshelter.podshot",
+      "bundleIdentifier": "org.universalshelter.gymshot",
       "infoPlist": {
-        "NSCameraUsageDescription": "Podshot uses the camera to take your daily progress photo.",
-        "NSPhotoLibraryAddUsageDescription": "Podshot saves your timelapse exports to your photo library.",
-        "NSPhotoLibraryUsageDescription": "Podshot can import an existing photo as today's check-in.",
-        "NSHealthShareUsageDescription": "Podshot reads your weight and calorie data to show alongside your photo timeline. It never writes to Health."
+        "NSCameraUsageDescription": "GymShot uses the camera to take your daily progress photo.",
+        "NSPhotoLibraryAddUsageDescription": "GymShot saves your timelapse exports to your photo library.",
+        "NSPhotoLibraryUsageDescription": "GymShot can import an existing photo as today's check-in.",
+        "NSHealthShareUsageDescription": "GymShot reads your weight and calorie data to show alongside your photo timeline. It never writes to Health."
       }
     },
     "android": {
-      "package": "org.universalshelter.podshot",
+      "package": "org.universalshelter.gymshot",
       "adaptiveIcon": {
         "backgroundColor": "#FBF7F4",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -47,15 +47,15 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Podshot uses the camera to take your daily progress photo.",
+          "cameraPermission": "GymShot uses the camera to take your daily progress photo.",
           "recordAudioAndroid": false
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "Podshot can import an existing photo as today's check-in.",
-          "savePhotosPermission": "Podshot saves your timelapse exports to your photo library.",
+          "photosPermission": "GymShot can import an existing photo as today's check-in.",
+          "savePhotosPermission": "GymShot saves your timelapse exports to your photo library.",
           "isAccessMediaLocationEnabled": false
         }
       ],

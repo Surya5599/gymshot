@@ -146,7 +146,7 @@ export default function PodScreen() {
                 disabled={full}
                 onPress={() =>
                   void Share.share({
-                    message: `Join my Podshot pod "${pod.name}": ${inviteUrl}`,
+                    message: `Join my GymShot pod "${pod.name}": ${inviteUrl}`,
                   })
                 }
               />

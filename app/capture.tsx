@@ -226,7 +226,7 @@ function PermissionGate({ onRequest, onClose }: { onRequest: () => void; onClose
         Camera access needed
       </Text>
       <Text color="inkSoft" center style={{ marginTop: t.space.sm }}>
-        Podshot only opens the camera when you are taking today's photo. Photos stay in the app's own
+        GymShot only opens the camera when you are taking today's photo. Photos stay in the app's own
         storage.
       </Text>
       <Button label="Allow camera" onPress={onRequest} style={{ marginTop: t.space.xl }} />

@@ -1,4 +1,4 @@
-# Podshot
+# GymShot
 
 A daily body-progress-photo app where you and a small circle of friends see
 each other's photos, creating mutual accountability — without being a workout
@@ -16,7 +16,7 @@ cleanly. What is real, and what is honestly not, is listed below.
 | v1 must-have | State |
 |---|---|
 | Daily photo capture, front/side/back, ghost overlay of the last shot at that angle | Done — `app/capture.tsx`, with a UI-thread opacity slider and a thirds/plumb grid |
-| Private pods, 3–8 people, invite-only via link or 6-char code | Done — `app/pod/*`, deep link `podshot://pod/join?code=ABC123` |
+| Private pods, 3–8 people, invite-only via link or 6-char code | Done — `app/pod/*`, deep link `gymshot://pod/join?code=ABC123` |
 | Streak tracking + days-logged-this-month | Done — `src/lib/streak.ts`, animated ring on Today |
 | Friend feed, most recent day only | Done — `src/features/PodThread.tsx`, an iMessage-style thread; history is not scrollable by design |
 | Lightweight reactions, pod-only | Done — closed set of 5 emoji as iMessage-style tapbacks, one per person per check-in |
@@ -161,7 +161,7 @@ expo-doctor, iOS and Android Metro bundles, 19 pure-logic checks, and `expo preb
 valid Android project with the right permissions
 (`CAMERA`, `READ_MEDIA_IMAGES`, `health.READ_WEIGHT`,
 `health.READ_NUTRITION`, `health.READ_TOTAL_CALORIES_BURNED`) and the
-`podshot://` deep-link intent filter.
+`gymshot://` deep-link intent filter.
 
 ---
 

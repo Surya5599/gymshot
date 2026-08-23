@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+// Deliberately still podshot.db after the GymShot rename: the filename is the
+// on-device database identity, so renaming it would orphan existing check-ins.
 export const DATABASE_NAME = 'podshot.db';
 const DATABASE_VERSION = 1;
 

@@ -8,7 +8,7 @@ import { useTheme } from '@/theme';
 
 /**
  * Reached either from the Pods tab or by opening an invite deep link
- * (podshot://pod/join?code=ABC123), which is why the code can arrive as a param.
+ * (gymshot://pod/join?code=ABC123), which is why the code can arrive as a param.
  */
 export default function JoinPodScreen() {
   const t = useTheme();

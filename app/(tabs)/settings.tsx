@@ -125,7 +125,7 @@ export default function SettingsScreen() {
       </Section>
 
       {/* ------------------------------------------------------------- health */}
-      <Section title="Health data" note={`Read-only from ${healthLabel}. Podshot never writes to Health and has no food or weight entry of its own.`}>
+      <Section title="Health data" note={`Read-only from ${healthLabel}. GymShot never writes to Health and has no food or weight entry of its own.`}>
         <Row
           icon="pulse-outline"
           title={settings.health_connected === 1 ? 'Connected' : 'Not connected'}
@@ -275,7 +275,7 @@ export default function SettingsScreen() {
       </Section>
 
       <Text variant="caption" color="inkFaint" center style={{ marginTop: t.space.xl }}>
-        Podshot 0.1.0 - photo-first, pod-only, never a workout tracker.
+        GymShot 0.1.0 - photo-first, pod-only, never a workout tracker.
       </Text>
     </Screen>
   );

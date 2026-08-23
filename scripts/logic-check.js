@@ -7,7 +7,7 @@
  * Native, so plain node can exercise them).
  */
 const path = require('path');
-const OUT = process.env.PODSHOT_LOGIC_OUT || path.join(__dirname, '..', '.logic-build');
+const OUT = process.env.GYMSHOT_LOGIC_OUT || path.join(__dirname, '..', '.logic-build');
 
 const { computeStreak } = require(path.join(OUT, 'streak.js'));
 const { toDayKey, addDays, formatDay, daysBetween } = require(path.join(OUT, 'date.js'));

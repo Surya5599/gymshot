@@ -89,11 +89,11 @@ export default function TimelapseScreen() {
       const perm = await MediaLibrary.requestPermissionsAsync();
       if (!perm.granted) return;
       let saved = 0;
-      let album = await MediaLibrary.getAlbumAsync('Podshot');
+      let album = await MediaLibrary.getAlbumAsync('GymShot');
       for (const frame of frames) {
         if (!frame.uri) continue;
         const asset = await MediaLibrary.createAssetAsync(frame.uri);
-        if (!album) album = await MediaLibrary.createAlbumAsync('Podshot', asset, false);
+        if (!album) album = await MediaLibrary.createAlbumAsync('GymShot', asset, false);
         else await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
         saved++;
       }

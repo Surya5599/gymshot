@@ -1,4 +1,4 @@
-# Podshot
+# GymShot
 
 Daily body-progress photos shared with a small private pod of friends.
 Expo (React Native) app, TypeScript, local-first SQLite. See `README.md` for
