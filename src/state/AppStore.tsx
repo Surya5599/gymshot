@@ -1,5 +1,5 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import * as q from '@/db/queries';
 import type { Angle, CheckIn, FeedItem, MetricRow, Photo, Pod, Settings, User } from '@/db/types';
@@ -84,6 +84,10 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
   const [ready, setReady] = useState(false);
   const [me, setMe] = useState<User | null>(null);
+  // Actions read the profile through this ref, not the `me` state. signUp()
+  // creates the row and refreshes, but a handler that calls signUp() and then
+  // createPod() in the same tick still closes over the render's stale `me`.
+  const meRef = useRef<User | null>(null);
   const [settings, setSettings] = useState<Settings>(EMPTY_SETTINGS);
   const [pods, setPods] = useState<Pod[]>([]);
   const [today, setToday] = useState<DayKey>(toDayKey());
@@ -102,6 +106,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setSettings(nextSettings);
 
     const user = await q.getMe(db);
+    meRef.current = user;
     setMe(user);
 
     if (!user) {
@@ -160,16 +165,18 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
   const createPod = useCallback(
     async (name: string, emoji: string) => {
+      const me = meRef.current;
       if (!me) throw new Error('No profile yet');
       const pod = await q.createPod(db, me.id, name.trim() || 'My pod', emoji);
       await refresh();
       return pod;
     },
-    [db, me, refresh]
+    [db, refresh]
   );
 
   const joinPodByCode = useCallback(
     async (code: string) => {
+      const me = meRef.current;
       if (!me) throw new Error('No profile yet');
       const pod = await q.findPodByCode(db, code.trim());
       if (!pod) return null;
@@ -178,20 +185,22 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       await refresh();
       return pod;
     },
-    [db, me, refresh]
+    [db, refresh]
   );
 
   const leavePod = useCallback(
     async (podId: string) => {
+      const me = meRef.current;
       if (!me) return;
       await q.leavePod(db, podId, me.id);
       await refresh();
     },
-    [db, me, refresh]
+    [db, refresh]
   );
 
   const saveTodayPhoto = useCallback(
     async ({ uri, angle, width, height }: { uri: string; angle: Angle; width?: number; height?: number }) => {
+      const me = meRef.current;
       if (!me) throw new Error('No profile yet');
       const day = toDayKey();
       const checkin = await q.ensureCheckIn(db, me.id, day);
@@ -203,7 +212,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
       await refresh();
     },
-    [db, me, refresh]
+    [db, refresh]
   );
 
   const removeTodayPhoto = useCallback(
@@ -225,34 +234,38 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
 
   const setTrained = useCallback(
     async (trained: boolean) => {
+      const me = meRef.current;
       if (!me) return;
       const checkin = todayCheckIn ?? (await q.ensureCheckIn(db, me.id, toDayKey()));
       await q.updateCheckIn(db, checkin.id, { trained: trained ? 1 : 0 });
       await refresh();
     },
-    [db, me, todayCheckIn, refresh]
+    [db, todayCheckIn, refresh]
   );
 
   const setNote = useCallback(
     async (note: string) => {
+      const me = meRef.current;
       if (!me) return;
       const checkin = todayCheckIn ?? (await q.ensureCheckIn(db, me.id, toDayKey()));
       await q.updateCheckIn(db, checkin.id, { note: note.trim() ? note : null });
       await refresh();
     },
-    [db, me, todayCheckIn, refresh]
+    [db, todayCheckIn, refresh]
   );
 
   const react = useCallback(
     async (checkinId: string, emoji: string) => {
+      const me = meRef.current;
       if (!me) return;
       await q.toggleReaction(db, checkinId, me.id, emoji);
       await refresh();
     },
-    [db, me, refresh]
+    [db, refresh]
   );
 
   const syncHealth = useCallback(async () => {
+    const me = meRef.current;
     if (!me) return 0;
     const provider = healthProvider();
     const granted = await provider.requestPermissions().catch(() => false);
@@ -268,7 +281,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     await q.writeSetting(db, 'health_connected', 1);
     await refresh();
     return samples.length;
-  }, [db, me, refresh]);
+  }, [db, refresh]);
 
   const setReminders = useCallback(
     async (on: boolean, hour?: number) => {
@@ -292,16 +305,18 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const seedDemoPod = useCallback(async () => {
+    const me = meRef.current;
     if (!me) return;
     await loadDemoPod(db, me.id);
     await refresh();
-  }, [db, me, refresh]);
+  }, [db, refresh]);
 
   const clearDemoData = useCallback(async () => {
+    const me = meRef.current;
     if (!me) return;
     await removeDemoData(db, me.id);
     await refresh();
-  }, [db, me, refresh]);
+  }, [db, refresh]);
 
   const resetEverything = useCallback(async () => {
     const rows = await db.getAllAsync<{ uri: string | null }>('SELECT uri FROM photos');

@@ -1,5 +1,5 @@
 /**
- * Podshot design tokens.
+ * GymShot design tokens.
  *
  * Direction: warm porcelain surfaces, soft coral accent, generous rounding,
  * heavy use of large numerals. Clean and cute - never clinical, never loud.
@@ -64,6 +64,17 @@ export const palette = {
     shadow: '#000000',
   },
 } as const;
+
+/**
+ * The same color at a different opacity. Takes the 6-digit hex used throughout
+ * `palette`, so components can fade a token instead of hardcoding an rgba().
+ */
+export function alpha(color: string, a: number): string {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(color.trim());
+  if (!m) return color;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
 
 export type ColorName = keyof typeof palette.light;
 export type Colors = Record<ColorName, string>;

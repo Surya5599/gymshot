@@ -40,6 +40,9 @@ export default function Onboarding() {
       }
       if (action === 'demo') await seedDemoPod();
       router.replace('/(tabs)/today');
+    } catch (e) {
+      // Without this the throw is swallowed and the tap looks like a no-op.
+      setError(e instanceof Error ? e.message : 'Could not finish setup.');
     } finally {
       setBusy(false);
     }
@@ -61,7 +64,7 @@ export default function Onboarding() {
           <Ionicons name="camera" size={26} color={t.colors.accent} />
         </View>
         <Text variant="display" style={{ marginTop: t.space.xl }}>
-          Podshot
+          GymShot
         </Text>
         <Text color="inkSoft" style={{ marginTop: t.space.sm, maxWidth: 320 }}>
           A daily progress photo, seen only by a few people who will notice when you skip.

@@ -13,7 +13,12 @@ type Props = {
   contentStyle?: ViewStyle;
 };
 
-export const TAB_BAR_HEIGHT = 72;
+/**
+ * Vertical room the floating tab bar assembly occupies above the safe area:
+ * the pill itself, its clearance from the system nav bar, and the fade above
+ * it. Mirrors the geometry in `app/(tabs)/_layout.tsx`.
+ */
+export const TAB_BAR_HEIGHT = 110;
 
 export function Screen({ children, scroll = true, tabBarPad = false, style, contentStyle }: Props) {
   const t = useTheme();
