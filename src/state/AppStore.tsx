@@ -1,3 +1,4 @@
+import type { Session } from '@supabase/supabase-js';
 import { useSQLiteContext } from 'expo-sqlite';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -7,11 +8,15 @@ import { addDays, DayKey, toDayKey } from '@/lib/date';
 import { loadDemoPod, removeDemoData } from '@/lib/demo';
 import { healthProvider, syncRecentHealth } from '@/lib/health';
 import { deleteStoredPhoto, storeCheckInPhoto } from '@/lib/photos';
+import { pushDisplayName, supabase } from '@/lib/supabase';
 import { cancelDailyReminder, requestReminderPermission, scheduleDailyReminder } from '@/lib/reminders';
 import { computeStreak, StreakInfo } from '@/lib/streak';
 
 type Store = {
   ready: boolean;
+  /** Supabase auth session; null while signed out. Valid once `authReady`. */
+  session: Session | null;
+  authReady: boolean;
   me: User | null;
   settings: Settings;
   pods: Pod[];
@@ -20,12 +25,19 @@ type Store = {
   todayPhotos: Photo[];
   todayMetrics: MetricRow | null;
   streak: StreakInfo;
+  /** Every day I have checked in, newest first. */
+  loggedDays: DayKey[];
   feed: FeedItem[];
   missing: User[];
   healthLabel: string;
 
   refresh: () => Promise<void>;
   signUp: (name: string) => Promise<void>;
+  /** Returns true if a session exists afterwards; false means the project
+   *  requires email confirmation before the first sign-in. */
+  signUpWithEmail: (email: string, password: string) => Promise<boolean>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => Promise<void>;
 
   createPod: (name: string, emoji: string) => Promise<Pod>;
@@ -83,6 +95,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const db = useSQLiteContext();
 
   const [ready, setReady] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [me, setMe] = useState<User | null>(null);
   // Actions read the profile through this ref, not the `me` state. signUp()
   // creates the row and refreshes, but a handler that calls signUp() and then
@@ -95,6 +109,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [todayPhotos, setTodayPhotos] = useState<Photo[]>([]);
   const [todayMetrics, setTodayMetrics] = useState<MetricRow | null>(null);
   const [streak, setStreak] = useState<StreakInfo>(EMPTY_STREAK);
+  const [loggedDays, setLoggedDays] = useState<DayKey[]>([]);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [missing, setMissing] = useState<User[]>([]);
 
@@ -115,6 +130,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       setTodayPhotos([]);
       setTodayMetrics(null);
       setStreak(EMPTY_STREAK);
+      setLoggedDays([]);
       setFeed([]);
       setMissing([]);
       setReady(true);
@@ -135,6 +151,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     setTodayPhotos(checkin ? await q.photosFor(db, checkin.id) : []);
     setTodayMetrics(metrics);
     setStreak(computeStreak(days, day));
+    setLoggedDays(days);
     setFeed(feedRows);
     setMissing(missingRows);
     setReady(true);
@@ -144,12 +161,42 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+      setSession(next);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   /* --------------------------------------------------------------- actions */
+
+  const signUpWithEmail = useCallback(async (email: string, password: string) => {
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+    return data.session != null;
+  }, []);
+
+  const signInWithEmail = useCallback(async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  }, []);
+
+  const signOut = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  }, []);
 
   const signUp = useCallback(
     async (name: string) => {
       await q.createMe(db, name.trim() || 'Me');
       await q.writeSetting(db, 'onboarded', 1);
+      // Mirror the name to the remote profile; local-first, so a failure
+      // here must never block onboarding.
+      pushDisplayName(name.trim() || 'Me').catch(() => {});
       await refresh();
     },
     [db, refresh]
@@ -348,6 +395,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Store>(
     () => ({
       ready,
+      session,
+      authReady,
       me,
       settings,
       pods,
@@ -356,11 +405,15 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       todayPhotos,
       todayMetrics,
       streak,
+      loggedDays,
       feed,
       missing,
       healthLabel: healthProvider().label,
       refresh,
       signUp,
+      signUpWithEmail,
+      signInWithEmail,
+      signOut,
       setSetting,
       createPod,
       joinPodByCode,
@@ -381,6 +434,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       ready,
+      session,
+      authReady,
       me,
       settings,
       pods,
@@ -389,10 +444,14 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       todayPhotos,
       todayMetrics,
       streak,
+      loggedDays,
       feed,
       missing,
       refresh,
       signUp,
+      signUpWithEmail,
+      signInWithEmail,
+      signOut,
       setSetting,
       createPod,
       joinPodByCode,

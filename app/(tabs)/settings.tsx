@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, View } from 'react-native';
 
-import { Avatar, Button, Card, Screen, Segmented, Squish, Text, Toggle } from '@/components';
+import { Avatar, Button, Card, MonthGrid, Screen, Segmented, Squish, Text, Toggle } from '@/components';
 import { DEMO_POD_NAME } from '@/lib/demo';
 import { formatBytes, storageFootprint } from '@/lib/photos';
 import { useStore } from '@/state/AppStore';
@@ -28,9 +28,12 @@ export default function SettingsScreen() {
   const router = useRouter();
   const {
     me,
+    session,
     pods,
     settings,
     streak,
+    loggedDays,
+    today,
     healthLabel,
     setSetting,
     setReminders,
@@ -38,6 +41,7 @@ export default function SettingsScreen() {
     seedDemoPod,
     clearDemoData,
     resetEverything,
+    signOut,
   } = useStore();
 
   const [busy, setBusy] = useState<string | null>(null);
@@ -59,7 +63,54 @@ export default function SettingsScreen() {
             </Text>
           </View>
         </View>
+
+        {/* This month at a glance: filled days posted, hollow days did not. */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'baseline',
+            marginTop: t.space.lg,
+          }}
+        >
+          <Text variant="caption" color="inkSoft" eyebrow>
+            This month
+          </Text>
+          <Text variant="caption" color="inkFaint">
+            {streak.monthLogged} of {streak.monthDays} days
+          </Text>
+        </View>
+        <View style={{ marginTop: t.space.sm }}>
+          <MonthGrid logged={loggedDays} today={today} />
+        </View>
       </Card>
+
+      {/* ------------------------------------------------------------ account */}
+      <Section title="Account" note="Signing out keeps everything on this device - photos, pods, and streak stay put.">
+        <Row
+          icon="mail-outline"
+          title={session?.user.email ?? 'Signed in'}
+          subtitle="GymShot account"
+          right={
+            <Button
+              label="Sign out"
+              variant="secondary"
+              loading={busy === 'signout'}
+              onPress={async () => {
+                setBusy('signout');
+                try {
+                  await signOut();
+                  router.replace('/auth');
+                } catch {
+                  // A failed network sign-out still leaves the session valid.
+                } finally {
+                  setBusy(null);
+                }
+              }}
+            />
+          }
+        />
+      </Section>
 
       {/* ------------------------------------------------------------ privacy */}
       <Section title="Privacy" note="These apply to every pod at once. One photo goes out unmodified, so a per-pod setting would be a promise the app could not keep.">

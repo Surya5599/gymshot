@@ -2,6 +2,7 @@ export * from './Avatar';
 export * from './Button';
 export * from './Card';
 export * from './EmptyState';
+export * from './MonthGrid';
 export * from './PhotoTile';
 export * from './ReactionBar';
 export * from './Screen';

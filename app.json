@@ -40,6 +40,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "GymShot reads your weight and calorie data to show alongside your photo timeline. It never writes to Health.",
+          "background": false
+        }
+      ],
       "expo-router",
       "expo-font",
       "expo-system-ui",

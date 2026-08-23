@@ -1,17 +1,43 @@
+import { Platform } from 'react-native';
+
 /**
  * Seam for the optional native health module.
  *
- * Metro resolves `require('...')` statically even inside try/catch, so a
- * conditional import of an uninstalled package fails the bundle. Instead the
- * whole optional dependency lives behind this one file.
+ * iOS uses @kingstinct/react-native-healthkit (Nitro-based, New Architecture).
+ * It only functions in a development or production build; in Expo Go the
+ * require below throws because the Nitro native module is absent, and the app
+ * falls back to the simulated provider.
  *
- * To enable real Health reads in a development or production build:
- *   1. npx expo install react-native-health          (iOS / HealthKit)
- *      npx expo install react-native-health-connect  (Android / Health Connect)
- *   2. Replace the null export below with the platform-appropriate import.
- *   3. Implement `readRange` in src/lib/health.ts against that module.
- *
- * Until then the app runs on the simulated provider, which is labelled as such
- * everywhere it appears in the UI.
+ * Android (Health Connect via react-native-health-connect) is not wired yet;
+ * this export stays null there so Android keeps the simulated provider.
  */
-export const nativeHealthModule: unknown = null;
+
+/** The slice of the healthkit API the app uses. Kept manual so the rest of
+ *  the app never imports the package's types directly. */
+export type HealthKitModule = {
+  isHealthDataAvailable(): boolean;
+  requestAuthorization(toRequest: { toRead?: readonly string[] }): Promise<boolean>;
+  queryQuantitySamples(
+    identifier: string,
+    options: {
+      filter?: { date?: { startDate?: Date; endDate?: Date } };
+      /** Non-positive fetches all samples in range. */
+      limit?: number;
+      ascending?: boolean;
+      unit?: string;
+    }
+  ): Promise<readonly { quantity: number; unit: string; startDate: Date; endDate: Date }[]>;
+};
+
+declare const require: (moduleId: string) => unknown;
+
+function load(): HealthKitModule | null {
+  if (Platform.OS !== 'ios') return null;
+  try {
+    return require('@kingstinct/react-native-healthkit') as HealthKitModule;
+  } catch {
+    return null; // Expo Go, or a binary built without the module.
+  }
+}
+
+export const nativeHealthModule: HealthKitModule | null = load();

@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 
 import type { DayKey } from './date';
 import { nativeHealthModule } from './nativeHealthModule';
-import { addDays, toDayKey } from './date';
+import { addDays, fromDayKey, toDayKey } from './date';
 
 /**
  * Read-only health bridge.
@@ -35,9 +35,9 @@ export type HealthProvider = {
 };
 
 function nativeModulePresent(): boolean {
-  // The optional dependency is isolated in one file so Metro never has to
-  // resolve a package that may not be installed. See nativeHealthModule.ts.
-  return nativeHealthModule !== null && (Platform.OS === 'ios' || Platform.OS === 'android');
+  // The optional dependency is isolated in one file so a binary without it
+  // (Expo Go, Android) falls back cleanly. See nativeHealthModule.ts.
+  return nativeHealthModule !== null && nativeHealthModule.isHealthDataAvailable();
 }
 
 /**
@@ -68,16 +68,61 @@ export const simulatedHealth: HealthProvider = {
   },
 };
 
+const BODY_MASS = 'HKQuantityTypeIdentifierBodyMass';
+const DIETARY_ENERGY = 'HKQuantityTypeIdentifierDietaryEnergyConsumed';
+
 const nativeHealth: HealthProvider = {
   id: Platform.OS === 'ios' ? 'apple-health' : 'health-connect',
   label: Platform.OS === 'ios' ? 'Apple Health' : 'Health Connect',
   isAvailable: nativeModulePresent,
   requestPermissions: async () => {
-    throw new Error(
-      'Native health read requires a development build with react-native-health (iOS) or react-native-health-connect (Android).'
-    );
+    const hk = nativeHealthModule;
+    if (!hk || !hk.isHealthDataAvailable()) return false;
+    // HealthKit never reveals whether a read grant was given, only that the
+    // prompt completed - denied types just come back with no samples.
+    return hk.requestAuthorization({ toRead: [BODY_MASS, DIETARY_ENERGY] });
   },
-  readRange: async () => [],
+  readRange: async (fromDay, toDay) => {
+    const hk = nativeHealthModule;
+    if (!hk) return [];
+    // Local-midnight bounds: a sample belongs to the calendar day it was
+    // taken on, matching how check-ins are keyed.
+    const startDate = fromDayKey(fromDay);
+    const endDate = fromDayKey(addDays(toDay, 1));
+    const query = (identifier: string, unit: string) =>
+      hk.queryQuantitySamples(identifier, {
+        filter: { date: { startDate, endDate } },
+        limit: 0,
+        ascending: true,
+        unit,
+      });
+
+    const [weights, energy] = await Promise.all([
+      query(BODY_MASS, 'kg'),
+      query(DIETARY_ENERGY, 'kcal'),
+    ]);
+
+    const byDay = new Map<DayKey, { weightKg: number | null; caloriesIn: number | null }>();
+    const entry = (day: DayKey) => {
+      let e = byDay.get(day);
+      if (!e) {
+        e = { weightKg: null, caloriesIn: null };
+        byDay.set(day, e);
+      }
+      return e;
+    };
+
+    // Ascending order, so the last weight sample of a day wins.
+    for (const s of weights) entry(toDayKey(new Date(s.startDate))).weightKg = round(s.quantity, 1);
+    for (const s of energy) {
+      const e = entry(toDayKey(new Date(s.startDate)));
+      e.caloriesIn = Math.round((e.caloriesIn ?? 0) + s.quantity);
+    }
+
+    return [...byDay.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([day, v]) => ({ day, ...v }));
+  },
 };
 
 export function healthProvider(): HealthProvider {
