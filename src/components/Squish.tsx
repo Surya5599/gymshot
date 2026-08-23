@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import React, { useCallback } from 'react';
-import { Platform, Pressable, PressableProps, ViewStyle } from 'react-native';
+import { Platform, Pressable, PressableProps, StyleSheet, ViewStyle } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
 import { motion } from '@/theme';
@@ -14,12 +14,55 @@ type Props = Omit<PressableProps, 'style'> & {
 };
 
 /**
+ * Style properties that describe how the element sits in its parent. These have
+ * to end up on the Pressable: left on the inner view they are measured against a
+ * box that has already shrink-wrapped to its content, so `flex: 1` silently does
+ * nothing and the row bunches up. Everything else - padding, background, border,
+ * alignment - stays inside, so the squish scales the whole visible box.
+ */
+const LAYOUT_KEYS = new Set([
+  'flex',
+  'flexGrow',
+  'flexShrink',
+  'flexBasis',
+  'alignSelf',
+  'zIndex',
+  'position',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'start',
+  'end',
+  'margin',
+  'marginTop',
+  'marginRight',
+  'marginBottom',
+  'marginLeft',
+  'marginHorizontal',
+  'marginVertical',
+  'marginStart',
+  'marginEnd',
+]);
+
+function splitStyle(style?: ViewStyle | ViewStyle[]) {
+  const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
+  const outer: Record<string, unknown> = {};
+  const inner: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(flat)) {
+    (LAYOUT_KEYS.has(key) ? outer : inner)[key] = value;
+  }
+  return { outer: outer as ViewStyle, inner: inner as ViewStyle };
+}
+
+/**
  * The single interactive primitive. Everything tappable in GymShot squishes,
  * so touch feedback is consistent instead of per-screen improvisation.
  */
 export function Squish({ style, scaleTo = 0.96, haptic = 'light', onPress, children, ...rest }: Props) {
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const { outer, inner } = splitStyle(style);
 
   const fire = useCallback(
     (e: any) => {
@@ -38,6 +81,7 @@ export function Squish({ style, scaleTo = 0.96, haptic = 'light', onPress, child
   return (
     <Pressable
       {...rest}
+      style={outer}
       onPress={fire}
       onPressIn={() => {
         scale.value = withSpring(scaleTo, motion.springSnappy);
@@ -46,7 +90,7 @@ export function Squish({ style, scaleTo = 0.96, haptic = 'light', onPress, child
         scale.value = withSpring(1, motion.springBouncy);
       }}
     >
-      <Animated.View style={[animated, style]}>{children}</Animated.View>
+      <Animated.View style={[animated, inner]}>{children}</Animated.View>
     </Pressable>
   );
 }

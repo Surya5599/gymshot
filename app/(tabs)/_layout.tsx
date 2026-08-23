@@ -68,7 +68,9 @@ function GymShotTabBar({ state, navigation }: any) {
             tint={t.scheme === 'dark' ? 'dark' : 'light'}
             style={{
               flexDirection: 'row',
-              paddingVertical: 10,
+              alignSelf: 'stretch',
+              justifyContent: 'space-between',
+              paddingVertical: t.space.md,
               paddingHorizontal: t.space.sm,
               backgroundColor:
                 Platform.OS === 'android' ? t.colors.bgElevated : alpha(t.colors.surface, 0.72),
@@ -118,7 +120,7 @@ function TabItem({
   }, [focused, lift, t.motion.springSnappy]);
 
   const iconStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -3 * lift.value }, { scale: 1 + 0.08 * lift.value }],
+    transform: [{ translateY: -4 * lift.value }, { scale: 1 + 0.08 * lift.value }],
   }));
   const labelStyle = useAnimatedStyle(() => ({
     opacity: lift.value,
@@ -129,17 +131,17 @@ function TabItem({
     <Squish
       onPress={onPress}
       scaleTo={0.9}
-      style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 2 }}
+      style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: t.space.xs }}
     >
       <Animated.View style={iconStyle}>
         <Ionicons
           name={focused ? iconActive : icon}
-          size={22}
+          size={28}
           color={focused ? t.colors.accent : t.colors.inkFaint}
         />
       </Animated.View>
       <Animated.View style={labelStyle}>
-        <Text variant="caption" color="accentInk" style={{ fontSize: 10, marginTop: 1 }}>
+        <Text variant="caption" color="accentInk" style={{ fontSize: 11, marginTop: 2 }}>
           {label}
         </Text>
       </Animated.View>
