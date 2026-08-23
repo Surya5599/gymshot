@@ -194,8 +194,6 @@ export default function CaptureScreen() {
         disabled={!!shot || counting}
         showGrid={showGrid}
         onToggleGrid={() => setShowGrid((v) => !v)}
-        timer={timer}
-        onCycleTimer={cycleTimer}
       />
 
       <BottomBar
@@ -206,6 +204,7 @@ export default function CaptureScreen() {
         saving={saving}
         counting={counting}
         timer={timer}
+        onCycleTimer={cycleTimer}
         onShutter={onShutter}
         onFlip={() => setFacing((f) => (f === 'front' ? 'back' : 'front'))}
         onRetake={() => setShot(null)}
@@ -286,8 +285,6 @@ function TopBar({
   disabled,
   showGrid,
   onToggleGrid,
-  timer,
-  onCycleTimer,
 }: {
   angle: Angle;
   onAngle: (a: Angle) => void;
@@ -295,8 +292,6 @@ function TopBar({
   disabled: boolean;
   showGrid: boolean;
   onToggleGrid: () => void;
-  timer: number;
-  onCycleTimer: () => void;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -315,38 +310,45 @@ function TopBar({
         ) : (
           <View style={{ flex: 1 }} />
         )}
-        <View style={{ flexDirection: 'row', gap: t.space.sm }}>
-          <TimerButton seconds={timer} onPress={onCycleTimer} />
-          <GlassButton icon={showGrid ? 'grid' : 'grid-outline'} onPress={onToggleGrid} />
-        </View>
+        <GlassButton icon={showGrid ? 'grid' : 'grid-outline'} onPress={onToggleGrid} />
       </View>
     </View>
   );
 }
 
-/** Cycles off -> 3s -> 5s -> 10s. Active state is coral so it is obvious it is armed. */
+/** Width reserved either side of the shutter, so it stays optically centred. */
+const SIDE_SLOT = 92;
+
+/**
+ * Cycles off -> 3s -> 5s -> 10s. Lives bottom-left, in thumb reach of the hand
+ * already holding the phone, because arming the timer is what you do just
+ * before stepping back from it. Active state is coral so it is obvious it is
+ * armed.
+ */
 function TimerButton({ seconds, onPress }: { seconds: number; onPress: () => void }) {
   const t = useTheme();
   const armed = seconds > 0;
   return (
     <Squish
       scaleTo={0.88}
+      haptic="medium"
       onPress={onPress}
+      hitSlop={10}
       style={{
-        minWidth: 40,
-        height: 40,
-        paddingHorizontal: armed ? 10 : 0,
-        borderRadius: 20,
+        minWidth: 56,
+        height: 56,
+        paddingHorizontal: armed ? 14 : 0,
+        borderRadius: 28,
         backgroundColor: armed ? t.colors.accent : 'rgba(0,0,0,0.42)',
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
-        gap: 3,
+        gap: 4,
       }}
     >
-      <Ionicons name={armed ? 'timer' : 'timer-outline'} size={17} color="#fff" />
+      <Ionicons name={armed ? 'timer' : 'timer-outline'} size={24} color="#fff" />
       {armed ? (
-        <Text variant="label" style={{ color: '#fff', fontSize: 12 }}>
+        <Text variant="label" style={{ color: '#fff', fontSize: 14 }}>
           {seconds}s
         </Text>
       ) : null}
@@ -381,6 +383,7 @@ function BottomBar({
   saving,
   counting,
   timer,
+  onCycleTimer,
   onShutter,
   onFlip,
   onRetake,
@@ -393,6 +396,7 @@ function BottomBar({
   saving: boolean;
   counting: boolean;
   timer: number;
+  onCycleTimer: () => void;
   onShutter: () => void;
   onFlip: () => void;
   onRetake: () => void;
@@ -433,9 +437,13 @@ function BottomBar({
         </View>
       ) : (
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <View style={{ width: 48 }} />
+          <View style={{ width: SIDE_SLOT, alignItems: 'flex-start' }}>
+            {!counting ? <TimerButton seconds={timer} onPress={onCycleTimer} /> : null}
+          </View>
           <Shutter onPress={onShutter} counting={counting} armed={timer > 0} />
-          {!counting ? <GlassButton icon="camera-reverse-outline" onPress={onFlip} /> : <View style={{ width: 40 }} />}
+          <View style={{ width: SIDE_SLOT, alignItems: 'flex-end' }}>
+            {!counting ? <GlassButton icon="camera-reverse-outline" onPress={onFlip} /> : null}
+          </View>
         </View>
       )}
     </View>
