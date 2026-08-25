@@ -26,7 +26,7 @@ export default function JoinPodScreen() {
     try {
       const pod = await joinPodByCode(value);
       if (!pod) {
-        setError('No pod with that code, or it is already at eight members.');
+        setError('No squad with that code, or it is already at eight members.');
         return;
       }
       router.replace(`/pod/${pod.id}`);
@@ -43,7 +43,7 @@ export default function JoinPodScreen() {
 
   return (
     <Screen>
-      <Text variant="title">Join a pod</Text>
+      <Text variant="title">Join a squad</Text>
       <Text color="inkSoft" style={{ marginTop: 4 }}>
         Enter the six-character code a friend sent you.
       </Text>
@@ -88,7 +88,7 @@ export default function JoinPodScreen() {
       </View>
 
       <Text variant="caption" color="inkFaint" style={{ marginTop: t.space.xxl, lineHeight: 17 }}>
-        Codes only work while the pod has room. There is no way to browse or search for pods, by
+        Codes only work while the squad has room. There is no way to browse or search for squads, by
         design.
       </Text>
     </Screen>

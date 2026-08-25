@@ -1,0 +1,16 @@
+# Deploys the web app in web/, not the Expo project at the repo root.
+# This file overrides the build settings configured in the Netlify UI.
+
+[build]
+  base = "web"
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Single-page app: serve index.html for any path.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -42,7 +42,7 @@ export default function JourneyScreen() {
     <Screen tabBarPad>
       <Text variant="title">Journey</Text>
       <Text color="inkSoft" style={{ marginTop: 4 }}>
-        Your own history. Nobody in your pods can scroll this.
+        Your own history. Nobody in your squads can scroll this.
       </Text>
 
       <View style={{ marginTop: t.space.xl }}>

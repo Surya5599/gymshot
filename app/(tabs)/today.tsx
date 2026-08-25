@@ -152,7 +152,7 @@ export default function TodayScreen() {
               Today is still open
             </Text>
             <Text color="inkSoft" style={{ marginTop: 6 }}>
-              One photo, aligned to yesterday. Your pod sees it, nobody else does.
+              One photo, aligned to yesterday. Your squad sees it, nobody else does.
             </Text>
             <Button
               label="Take today's photo"
@@ -253,7 +253,7 @@ export default function TodayScreen() {
           <Card padded="lg" radiusKey="xl">
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text variant="bodyStrong">
-                {podPosted > 0 ? `${podPosted} in your pods posted` : 'Nobody has posted yet'}
+                {podPosted > 0 ? `${podPosted} in your squads posted` : 'Nobody has posted yet'}
               </Text>
               <Ionicons name="chevron-forward" size={16} color={t.colors.inkFaint} />
             </View>

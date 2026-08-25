@@ -1,65 +1,66 @@
 /**
  * GymShot design tokens.
  *
- * Direction: warm porcelain surfaces, soft coral accent, generous rounding,
- * heavy use of large numerals. Clean and cute - never clinical, never loud.
- * Every value here is referenced through `useTheme()`; nothing hardcodes color.
+ * Direction: soft neo-brutalism - a pale sage field, dusty rose accent,
+ * muted mint, near-black ink, and firm outlines. Matches the web app's theme
+ * so both clients read as one product. Every value here is referenced through
+ * `useTheme()`; nothing hardcodes color.
  */
 
 export const palette = {
   light: {
-    bg: '#FBF7F4',
+    bg: '#ECF0E2',
     bgElevated: '#FFFFFF',
     surface: '#FFFFFF',
-    surfaceAlt: '#F4EDE7',
-    surfaceSunken: '#F0E8E1',
+    surfaceAlt: '#F7F9F0',
+    surfaceSunken: '#E2E7D6',
 
-    ink: '#1F1917',
-    inkSoft: '#6E615A',
-    inkFaint: '#A79A91',
-    inkInverse: '#FFFFFF',
+    ink: '#17161A',
+    inkSoft: '#5B6053',
+    inkFaint: '#979C8B',
+    inkInverse: '#FFFCF7',
 
-    accent: '#FF7A66',
-    accentSoft: '#FFE6E0',
-    accentInk: '#B03D2C',
+    accent: '#CC9A8D',
+    accentSoft: '#EBD1C9',
+    accentInk: '#8C5B4D',
 
-    mint: '#2FC79B',
-    mintSoft: '#DDF7EE',
-    lilac: '#9C8BFF',
-    lilacSoft: '#EAE6FF',
-    sun: '#FFB53D',
-    sunSoft: '#FFF0D6',
+    mint: '#7FA890',
+    mintSoft: '#DEE9E0',
+    lilac: '#A9A4C6',
+    lilacSoft: '#E8E6F1',
+    sun: '#D9B36A',
+    sunSoft: '#F3EAD3',
 
-    border: 'rgba(31, 25, 23, 0.08)',
-    borderStrong: 'rgba(31, 25, 23, 0.16)',
-    scrim: 'rgba(31, 25, 23, 0.45)',
-    shadow: '#2B1E18',
+    border: 'rgba(23, 22, 26, 0.22)',
+    borderStrong: 'rgba(23, 22, 26, 0.55)',
+    scrim: 'rgba(23, 22, 26, 0.45)',
+    shadow: '#17161A',
   },
   dark: {
-    bg: '#12100F',
-    bgElevated: '#1B1817',
-    surface: '#1B1817',
-    surfaceAlt: '#242020',
-    surfaceSunken: '#0C0A0A',
+    bg: '#171912',
+    bgElevated: '#22251C',
+    surface: '#22251C',
+    surfaceAlt: '#1C1F16',
+    surfaceSunken: '#101208',
 
-    ink: '#F7F2EF',
-    inkSoft: '#B4A79F',
-    inkFaint: '#7C6F68',
-    inkInverse: '#12100F',
+    ink: '#F1EFE4',
+    inkSoft: '#B9BCAB',
+    inkFaint: '#7E816F',
+    inkInverse: '#17161A',
 
-    accent: '#FF8A76',
-    accentSoft: '#3A211C',
-    accentInk: '#FFC9BE',
+    accent: '#D3A395',
+    accentSoft: '#4A332C',
+    accentInk: '#ECC9BC',
 
-    mint: '#3FD9AC',
-    mintSoft: '#123026',
-    lilac: '#AC9CFF',
-    lilacSoft: '#241F3A',
-    sun: '#FFC45C',
-    sunSoft: '#332510',
+    mint: '#85B598',
+    mintSoft: '#1E2E24',
+    lilac: '#AFAACD',
+    lilacSoft: '#252336',
+    sun: '#DFC084',
+    sunSoft: '#33290F',
 
-    border: 'rgba(247, 242, 239, 0.10)',
-    borderStrong: 'rgba(247, 242, 239, 0.20)',
+    border: 'rgba(241, 239, 228, 0.18)',
+    borderStrong: 'rgba(241, 239, 228, 0.40)',
     scrim: 'rgba(0, 0, 0, 0.65)',
     shadow: '#000000',
   },

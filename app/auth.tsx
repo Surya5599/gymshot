@@ -84,7 +84,7 @@ export default function Auth() {
         <Text color="inkSoft" style={{ marginTop: t.space.sm, maxWidth: 320 }}>
           {mode === 'signin'
             ? 'Welcome back. Sign in to pick up your streak.'
-            : 'One account, so your pod knows it is really you.'}
+            : 'One account, so your squad knows it is really you.'}
         </Text>
       </Animated.View>
 

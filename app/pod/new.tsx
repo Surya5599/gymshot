@@ -28,7 +28,7 @@ export default function NewPodScreen() {
 
   return (
     <Screen>
-      <Text variant="title">New pod</Text>
+      <Text variant="title">New squad</Text>
       <Text color="inkSoft" style={{ marginTop: 4 }}>
         Three to eight people. Everyone sees everyone's daily photo, and nothing leaves the group.
       </Text>
@@ -83,7 +83,7 @@ export default function NewPodScreen() {
       </Card>
 
       <Button
-        label="Create pod"
+        label="Create squad"
         size="lg"
         loading={busy}
         disabled={name.trim().length < 2}

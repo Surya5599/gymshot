@@ -34,7 +34,7 @@ export default function Onboarding() {
       if (action === 'join') {
         const pod = await joinPodByCode(code);
         if (!pod) {
-          setError('No pod with that code, or it is already full.');
+          setError('No squad with that code, or it is already full.');
           return;
         }
       }
@@ -78,7 +78,7 @@ export default function Onboarding() {
               Step 1 of 3
             </Text>
             <Text variant="heading" style={{ marginTop: 6 }}>
-              What should your pod call you?
+              What should your squad call you?
             </Text>
             <TextInput
               value={name}
@@ -116,7 +116,7 @@ export default function Onboarding() {
               Step 2 of 3
             </Text>
             <Text variant="heading" style={{ marginTop: 6 }}>
-              Start a pod, or join one
+              Squad up, or join one
             </Text>
             <Text variant="caption" color="inkFaint" style={{ marginTop: 4 }}>
               3 to 8 people. Invite-only, never discoverable.
@@ -124,7 +124,7 @@ export default function Onboarding() {
 
             <Card padded="lg" radiusKey="xl" style={{ marginTop: t.space.lg }}>
               <Text variant="label" color="inkSoft">
-                NEW POD
+                NEW SQUAD
               </Text>
               <TextInput
                 value={podName}
@@ -165,7 +165,7 @@ export default function Onboarding() {
                 ))}
               </View>
               <Button
-                label="Create pod"
+                label="Create squad"
                 loading={busy}
                 onPress={() => void finish('create')}
                 style={{ marginTop: t.space.lg }}
@@ -196,7 +196,7 @@ export default function Onboarding() {
                 }}
               />
               <Button
-                label="Join pod"
+                label="Join squad"
                 variant="secondary"
                 loading={busy}
                 disabled={code.length !== 6}
@@ -232,7 +232,7 @@ export default function Onboarding() {
               {[
                 ['lock-closed-outline', 'Photos are stored on this device only, by default.'],
                 ['eye-off-outline', 'Face blur can be turned on globally in Settings.'],
-                ['people-outline', 'Only your pod ever sees a check-in. There is no public feed.'],
+                ['people-outline', 'Only your squad ever sees a check-in. There is no public feed.'],
               ].map(([icon, copy]) => (
                 <View key={copy} style={{ flexDirection: 'row', gap: t.space.md, alignItems: 'flex-start' }}>
                   <Ionicons name={icon as never} size={18} color={t.colors.mint} style={{ marginTop: 2 }} />
@@ -253,7 +253,7 @@ export default function Onboarding() {
               style={{ marginTop: t.space.xl }}
             />
             <Button
-              label="Start with a demo pod"
+              label="Start with a demo squad"
               variant="ghost"
               onPress={() => void finish('demo')}
             />

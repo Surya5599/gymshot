@@ -43,9 +43,9 @@ export default function PodScreen() {
       <Screen>
         <EmptyState
           icon="alert-circle-outline"
-          title="Pod not found"
-          body="You may have left this pod, or it was removed when the last member left."
-          actionLabel="Back to pods"
+          title="Squad not found"
+          body="You may have left this squad, or it was removed when the last member left."
+          actionLabel="Back to squads"
           onAction={() => router.replace('/(tabs)/pods')}
         />
       </Screen>
@@ -125,8 +125,8 @@ export default function PodScreen() {
           </Text>
           <Text variant="caption" color="inkFaint" style={{ marginTop: 4 }}>
             {full
-              ? 'This pod is full. Small pods are the point.'
-              : 'Invite-only. A pod never appears in search or suggestions.'}
+              ? 'This squad is full. Small squads are the point.'
+              : 'Invite-only. A squad never appears in search or suggestions.'}
           </Text>
           <View style={{ flexDirection: 'row', gap: t.space.md, marginTop: t.space.lg }}>
             <View style={{ flex: 1 }}>
@@ -153,12 +153,12 @@ export default function PodScreen() {
             </View>
           </View>
           <Button
-            label="Leave pod"
+            label="Leave squad"
             variant="ghost"
             onPress={() =>
               Alert.alert(
-                'Leave this pod?',
-                'Your check-ins stay on your device. The pod stops seeing them.',
+                'Leave this squad?',
+                'Your check-ins stay on your device. The squad stops seeing them.',
                 [
                   { text: 'Cancel', style: 'cancel' },
                   {

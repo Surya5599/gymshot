@@ -538,7 +538,7 @@ function Composer({
       </Squish>
       {!iPosted ? (
         <Text variant="caption" color="inkFaint" center style={{ marginTop: t.space.sm, fontSize: 10 }}>
-          One photo a day. It goes to every pod at once.
+          One photo a day. It goes to every squad at once.
         </Text>
       ) : null}
     </Animated.View>

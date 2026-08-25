@@ -39,16 +39,16 @@ export default function PodsScreen() {
     return (
       <ScrollView style={{ flex: 1, backgroundColor: t.colors.bg }} contentContainerStyle={padding}>
         <Header
-          title="Pods"
-          subtitle="no pods yet"
+          title="Squad Up"
+          subtitle="no squads yet"
           onNew={() => router.push('/pod/new')}
           onJoin={() => router.push('/pod/join')}
         />
         <EmptyState
           icon="chatbubbles-outline"
-          title="No pods yet"
-          body="Accountability needs at least one other person. Start a pod and send the invite link to two or three friends."
-          actionLabel="Create a pod"
+          title="No squads yet"
+          body="Accountability needs at least one other person. Squad up and send the invite link to two or three friends."
+          actionLabel="Create a squad"
           onAction={() => router.push('/pod/new')}
         />
       </ScrollView>
@@ -75,7 +75,7 @@ export default function PodsScreen() {
       }
     >
       <Header
-        title="All pods"
+        title="Squad Up"
         subtitle={`${posted} of ${roster.length} in today`}
         onNew={() => router.push('/pod/new')}
         onJoin={() => router.push('/pod/join')}

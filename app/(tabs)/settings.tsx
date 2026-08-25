@@ -58,7 +58,7 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Text variant="heading">{me?.display_name ?? 'You'}</Text>
             <Text variant="caption" color="inkFaint">
-              {streak.current} day streak - best {streak.best} - {pods.length} pod
+              {streak.current} day streak - best {streak.best} - {pods.length} squad
               {pods.length === 1 ? '' : 's'}
             </Text>
           </View>
@@ -86,7 +86,7 @@ export default function SettingsScreen() {
       </Card>
 
       {/* ------------------------------------------------------------ account */}
-      <Section title="Account" note="Signing out keeps everything on this device - photos, pods, and streak stay put.">
+      <Section title="Account" note="Signing out keeps everything on this device - photos, squads, and streak stay put.">
         <Row
           icon="mail-outline"
           title={session?.user.email ?? 'Signed in'}
@@ -113,7 +113,7 @@ export default function SettingsScreen() {
       </Section>
 
       {/* ------------------------------------------------------------ privacy */}
-      <Section title="Privacy" note="These apply to every pod at once. One photo goes out unmodified, so a per-pod setting would be a promise the app could not keep.">
+      <Section title="Privacy" note="These apply to every squad at once. One photo goes out unmodified, so a per-squad setting would be a promise the app could not keep.">
         <Row
           icon="eye-off-outline"
           title="Blur my face"
@@ -139,7 +139,7 @@ export default function SettingsScreen() {
       </Section>
 
       {/* ------------------------------------------------------ what pods see */}
-      <Section title="What your pod sees" note="Photo and streak are always shared - that is the point. Numbers are opt-in per metric.">
+      <Section title="What your squad sees" note="Photo and streak are always shared - that is the point. Numbers are opt-in per metric.">
         <Row
           icon="barbell-outline"
           title="Trained today"
@@ -240,7 +240,7 @@ export default function SettingsScreen() {
       </Section>
 
       {/* --------------------------------------------------------------- pods */}
-      <Section title="Pods">
+      <Section title="Squads">
         {pods.map((p) => (
           <Squish key={p.id} scaleTo={0.98} onPress={() => router.push(`/pod/${p.id}`)}>
             <View
@@ -264,7 +264,7 @@ export default function SettingsScreen() {
         ))}
         <View style={{ flexDirection: 'row', gap: t.space.md, marginTop: t.space.sm }}>
           <View style={{ flex: 1 }}>
-            <Button label="New pod" variant="secondary" icon="add" onPress={() => router.push('/pod/new')} />
+            <Button label="New squad" variant="secondary" icon="add" onPress={() => router.push('/pod/new')} />
           </View>
           <View style={{ flex: 1 }}>
             <Button label="Join" variant="secondary" icon="enter-outline" onPress={() => router.push('/pod/join')} />
@@ -282,9 +282,9 @@ export default function SettingsScreen() {
       </Section>
 
       {/* --------------------------------------------------------------- demo */}
-      <Section title="Demo data" note="There is no sync backend yet, so a pod of one cannot show the social half of the product. This adds three clearly-labelled demo pod-mates with two weeks of history.">
+      <Section title="Demo data" note="There is no sync backend yet, so a squad of one cannot show the social half of the product. This adds three clearly-labelled demo squad-mates with two weeks of history.">
         <Button
-          label={hasDemo ? 'Remove demo pod' : 'Load demo pod'}
+          label={hasDemo ? 'Remove demo squad' : 'Load demo squad'}
           variant="secondary"
           icon={hasDemo ? 'trash-outline' : 'sparkles-outline'}
           loading={busy === 'demo'}
@@ -308,7 +308,7 @@ export default function SettingsScreen() {
           onPress={() =>
             Alert.alert(
               'Delete everything?',
-              'Every photo, check-in, and pod on this device is removed. This cannot be undone.',
+              'Every photo, check-in, and squad on this device is removed. This cannot be undone.',
               [
                 { text: 'Cancel', style: 'cancel' },
                 {
@@ -326,7 +326,7 @@ export default function SettingsScreen() {
       </Section>
 
       <Text variant="caption" color="inkFaint" center style={{ marginTop: t.space.xl }}>
-        GymShot 0.1.0 - photo-first, pod-only, never a workout tracker.
+        GymShot 0.1.0 - photo-first, squad-only, never a workout tracker.
       </Text>
     </Screen>
   );
