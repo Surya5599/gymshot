@@ -16,6 +16,7 @@ import {
   type CheckIn,
 } from '../lib/api';
 import { formatDay, toDayKey, type DayKey } from '../lib/date';
+import { supabase } from '../lib/supabase';
 import { computeStreak } from '../lib/streak';
 
 export default function TodayView({ active }: { active: boolean }) {
@@ -59,6 +60,19 @@ export default function TodayView({ active }: { active: boolean }) {
   }, [active, load]);
 
   const streak = computeStreak(days, today);
+
+  // A nudge should land while the tab is open, not on the next visit.
+  useEffect(() => {
+    const channel = supabase
+      .channel('my-nudges')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nudges' }, () => {
+        void load().catch(() => {});
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [load]);
 
   const [cameraFor, setCameraFor] = useState<Angle | null>(null);
 

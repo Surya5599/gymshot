@@ -1,16 +1,16 @@
 import type { Session } from '@supabase/supabase-js';
-import { CalendarDays, Camera, Images, LogOut, Users } from 'lucide-react';
+import { CalendarDays, Camera, Images, UserRound, Users } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-import { getProfile, isPro, updateProfile, type Profile } from './lib/api';
-import { getManagementUrl } from './lib/billing';
+import { getProfile, updateProfile, type Profile } from './lib/api';
 import { supabase } from './lib/supabase';
 import AuthView from './views/Auth';
 import JourneyView from './views/Journey';
 import PodsView from './views/Pods';
 import TodayView from './views/Today';
+import YouView from './views/You';
 
-type Tab = 'today' | 'pods' | 'journey';
+type Tab = 'today' | 'pods' | 'journey' | 'you';
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -53,37 +53,7 @@ export default function App() {
             GymShot<span>.</span>
           </h2>
         </div>
-        <div className="row" style={{ gap: 8 }}>
-          {isPro(profile) ? (
-            <button
-              className="btn-ghost"
-              style={{
-                padding: '4px 12px',
-                fontSize: 12,
-                fontWeight: 700,
-                background: 'var(--accent-soft)',
-                color: 'var(--accent-ink)',
-                border: '1.5px solid var(--line)',
-              }}
-              title="Manage subscription"
-              onClick={async () => {
-                const url = await getManagementUrl(profile.id).catch(() => null);
-                if (url) window.open(url, '_blank');
-                else window.alert('No store subscription to manage on this account.');
-              }}
-            >
-              PRO
-            </button>
-          ) : null}
-          <span className="caption">{profile.display_name}</span>
-          <button
-            className="btn-ghost row"
-            style={{ padding: '6px 10px', fontSize: 13, gap: 5 }}
-            onClick={() => void supabase.auth.signOut()}
-          >
-            <LogOut size={14} /> Sign out
-          </button>
-        </div>
+        <span className="caption">{profile.display_name}</span>
       </header>
 
       {/* All tabs stay mounted; hiding instead of unmounting keeps their
@@ -97,13 +67,21 @@ export default function App() {
       <div hidden={tab !== 'journey'}>
         <JourneyView active={tab === 'journey'} me={profile} />
       </div>
+      <div hidden={tab !== 'you'}>
+        <YouView
+          me={profile}
+          active={tab === 'you'}
+          onProfileChanged={() => void getProfile().then(setProfile).catch(console.error)}
+        />
+      </div>
 
       <nav className="tabbar">
         {(
           [
             ['today', 'Today', <CalendarDays key="i" size={15} />],
-            ['pods', 'Squad Up', <Users key="i" size={15} />],
+            ['pods', 'Squads', <Users key="i" size={15} />],
             ['journey', 'Journey', <Images key="i" size={15} />],
+            ['you', 'You', <UserRound key="i" size={15} />],
           ] as [Tab, string, React.ReactNode][]
         ).map(([k, label, icon]) => (
           <button key={k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>

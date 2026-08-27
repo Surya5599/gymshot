@@ -1,4 +1,4 @@
-import { BellRing, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Crown, Dumbbell, X } from 'lucide-react';
+import { BellRing, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Crown, Dumbbell, Flame, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { Avatar, ProUpsell } from '../components';
@@ -14,6 +14,7 @@ import {
   nudge,
   podFeed,
   REACTIONS,
+  squadStreaks,
   requestJoinByCode,
   isPro,
   toggleReaction,
@@ -24,6 +25,7 @@ import {
   type Profile,
 } from '../lib/api';
 import { toDayKey } from '../lib/date';
+import { supabase } from '../lib/supabase';
 
 const POD_EMOJI = ['\u{1F3CB}\u{FE0F}', '\u{1F525}', '\u{1F962}', '\u{1F31F}', '\u{1F436}', '\u{1F3AF}'];
 
@@ -280,16 +282,23 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
   const [entries, setEntries] = useState<FeedEntry[]>([]);
   const [waiting, setWaiting] = useState<Profile[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
+  const [streaks, setStreaks] = useState<Map<string, number>>(new Map());
   const [nudged, setNudged] = useState<Set<string>>(new Set());
+  const [copied, setCopied] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
-    const [feed, sent] = await Promise.all([podFeed(pod.id, today), myNudgesSent(pod.id, today)]);
+    const [feed, sent, str] = await Promise.all([
+      podFeed(pod.id, today),
+      myNudgesSent(pod.id, today),
+      squadStreaks(pod.id).catch(() => new Map<string, number>()),
+    ]);
     setEntries(feed.entries);
     setWaiting(feed.waiting);
     setMembers(feed.members);
+    setStreaks(str);
     setNudged(sent);
     setLoaded(true);
   }, [pod.id, today]);
@@ -298,7 +307,28 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
     void load().catch(console.error);
   }, [load]);
 
+  // Live thread: whenever a squad-visible row changes, refresh shortly after.
+  useEffect(() => {
+    let timer: number | undefined;
+    const refresh = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => void load().catch(() => {}), 400);
+    };
+    const channel = supabase
+      .channel(`pod-${pod.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkin_photos' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, refresh)
+      .subscribe();
+    return () => {
+      window.clearTimeout(timer);
+      void supabase.removeChannel(channel);
+    };
+  }, [pod.id, load]);
+
   const myEntry = entries.find((e) => e.author.id === me.id);
+  const postedAt = (iso: string) =>
+    new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -307,10 +337,23 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
           <ChevronLeft size={16} /> Back
         </button>
         <span style={{ fontSize: 22 }}>{pod.emoji}</span>
-        <div>
+        <div style={{ flex: 1 }}>
           <strong>{pod.name}</strong>
           <p className="caption">invite code {pod.invite_code}</p>
         </div>
+        <button
+          className="btn-ghost row"
+          style={{ padding: '6px 10px', fontSize: 13, gap: 5 }}
+          aria-label="Copy invite code"
+          onClick={async () => {
+            await navigator.clipboard.writeText(pod.invite_code).catch(() => {});
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1600);
+          }}
+        >
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          {copied ? 'Copied' : 'Copy'}
+        </button>
       </div>
 
       {/* Everyone in the squad, visible to everyone in the squad. */}
@@ -341,6 +384,11 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
                     {m.display_name}
                     {m.id === me.id ? ' (you)' : ''}
                   </span>
+                  {(streaks.get(m.id) ?? 0) > 0 ? (
+                    <span className="caption row" style={{ gap: 3, color: 'var(--accent-ink)' }}>
+                      <Flame size={13} /> {streaks.get(m.id)}
+                    </span>
+                  ) : null}
                   {m.id === pod.created_by ? (
                     <span className="caption row" style={{ gap: 4 }}>
                       <Crown size={13} /> owner
@@ -368,7 +416,9 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
           <div key={entry.checkin.id} className="row" style={{ alignItems: 'flex-end', flexDirection: mine ? 'row-reverse' : 'row' }}>
             {!mine ? <Avatar id={entry.author.id} name={entry.author.display_name} /> : null}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: mine ? 'flex-end' : 'flex-start', flex: 1 }}>
-              {!mine ? <span className="caption">{entry.author.display_name}</span> : null}
+              <span className="caption">
+                {mine ? 'you' : entry.author.display_name} - {postedAt(entry.checkin.created_at)}
+              </span>
               <div
                 className={`bubble${mine ? ' mine' : ''}`}
                 style={{ cursor: mine ? 'default' : 'pointer' }}

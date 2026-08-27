@@ -341,6 +341,21 @@ export async function podFeed(
   return { entries, waiting: members.filter((m) => !posted.has(m.id)), members };
 }
 
+/** Current streak per member. Only the counts leave the server; history
+ *  stays private. */
+export async function squadStreaks(podId: string): Promise<Map<string, number>> {
+  const { data, error } = await supabase.rpc('squad_streaks', { p_pod: podId });
+  if (error) throw error;
+  return new Map(((data ?? []) as { user_id: string; streak: number }[]).map((r) => [r.user_id, r.streak]));
+}
+
+/** Permanently deletes the account, owned squads, and every photo. */
+export async function deleteAccount(): Promise<void> {
+  const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
+  if (error) throw error;
+  await supabase.auth.signOut();
+}
+
 /* --------------------------------------------------------------- nudges */
 
 export type Nudge = { pod_id: string; from_user: string; to_user: string; day: DayKey };
