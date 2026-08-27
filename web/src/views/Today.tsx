@@ -1,4 +1,4 @@
-import { Camera, Loader2, SwitchCamera, Timer, TimerOff, Upload, X } from 'lucide-react';
+import { BellRing, Camera, Loader2, SwitchCamera, Timer, TimerOff, Upload, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { MonthGrid, Toggle } from '../components';
@@ -8,6 +8,7 @@ import {
   myCheckin,
   myLoggedDays,
   myTimeline,
+  nudgesForMe,
   signPhotoUrls,
   updateCheckin,
   uploadPhoto,
@@ -25,9 +26,15 @@ export default function TodayView({ active }: { active: boolean }) {
   const [note, setNote] = useState('');
   const [busyAngle, setBusyAngle] = useState<Angle | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nudgers, setNudgers] = useState<string[]>([]);
 
   const load = useCallback(async () => {
-    const [logged, mine] = await Promise.all([myLoggedDays(), myCheckin(today)]);
+    const [logged, mine, nudges] = await Promise.all([
+      myLoggedDays(),
+      myCheckin(today),
+      nudgesForMe(today).catch(() => []),
+    ]);
+    setNudgers(nudges.map((n) => n.name));
     setDays(logged);
     setCheckin(mine?.checkin ?? null);
     setNote(mine?.checkin.note ?? '');
@@ -89,6 +96,16 @@ export default function TodayView({ active }: { active: boolean }) {
           One check-in a day. Your squads see today only.
         </p>
       </div>
+
+      {/* A nudge is a squad-mate asking where today's photo is. */}
+      {nudgers.length > 0 && !streak.loggedToday ? (
+        <div className="card row" style={{ background: 'var(--accent-soft)' }}>
+          <BellRing size={18} style={{ color: 'var(--accent-ink)', flexShrink: 0 }} />
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent-ink)' }}>
+            {nudgers.join(', ')} nudged you - post today's photo.
+          </span>
+        </div>
+      ) : null}
 
       <div className="card row" style={{ justifyContent: 'space-around', textAlign: 'center' }}>
         <Stat value={String(streak.current)} label="day streak" highlight={streak.loggedToday} />

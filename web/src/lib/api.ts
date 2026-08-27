@@ -341,6 +341,54 @@ export async function podFeed(
   return { entries, waiting: members.filter((m) => !posted.has(m.id)), members };
 }
 
+/* --------------------------------------------------------------- nudges */
+
+export type Nudge = { pod_id: string; from_user: string; to_user: string; day: DayKey };
+
+/** Poke a squad-mate to post. Once per person per day; duplicates no-op. */
+export async function nudge(podId: string, toUser: string, day: DayKey): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth.user?.id ?? fail('not signed in');
+  const { error } = await supabase
+    .from('nudges')
+    .upsert({ pod_id: podId, from_user: uid, to_user: toUser, day }, { onConflict: 'pod_id,from_user,to_user,day', ignoreDuplicates: true });
+  if (error) throw error;
+}
+
+/** Who nudged me today, with names resolved via squad-mate profile access. */
+export async function nudgesForMe(day: DayKey): Promise<{ from: string; name: string }[]> {
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth.user?.id ?? fail('not signed in');
+  const { data, error } = await supabase
+    .from('nudges')
+    .select('from_user, profiles!nudges_from_user_fkey(display_name)')
+    .eq('to_user', uid)
+    .eq('day', day);
+  if (error) throw error;
+  const seen = new Set<string>();
+  const out: { from: string; name: string }[] = [];
+  for (const r of (data ?? []) as unknown as { from_user: string; profiles: { display_name: string } | null }[]) {
+    if (seen.has(r.from_user)) continue;
+    seen.add(r.from_user);
+    out.push({ from: r.from_user, name: r.profiles?.display_name ?? 'A squad-mate' });
+  }
+  return out;
+}
+
+/** Which members I already nudged today in this squad. */
+export async function myNudgesSent(podId: string, day: DayKey): Promise<Set<string>> {
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth.user?.id ?? fail('not signed in');
+  const { data, error } = await supabase
+    .from('nudges')
+    .select('to_user')
+    .eq('pod_id', podId)
+    .eq('from_user', uid)
+    .eq('day', day);
+  if (error) throw error;
+  return new Set((data ?? []).map((r) => r.to_user as string));
+}
+
 /** One reaction per person per check-in; same emoji again removes it. */
 export async function toggleReaction(checkinId: string, emoji: string): Promise<void> {
   const { data: auth } = await supabase.auth.getUser();

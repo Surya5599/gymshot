@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, Clock, Dumbbell, X } from 'lucide-react';
+import { BellRing, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Crown, Dumbbell, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { Avatar, ProUpsell } from '../components';
@@ -10,6 +10,8 @@ import {
   incomingJoinRequests,
   listPods,
   myJoinRequests,
+  myNudgesSent,
+  nudge,
   podFeed,
   REACTIONS,
   requestJoinByCode,
@@ -262,13 +264,18 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
   const today = toDayKey();
   const [entries, setEntries] = useState<FeedEntry[]>([]);
   const [waiting, setWaiting] = useState<Profile[]>([]);
+  const [members, setMembers] = useState<Profile[]>([]);
+  const [nudged, setNudged] = useState<Set<string>>(new Set());
+  const [showMembers, setShowMembers] = useState(false);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
-    const feed = await podFeed(pod.id, today);
+    const [feed, sent] = await Promise.all([podFeed(pod.id, today), myNudgesSent(pod.id, today)]);
     setEntries(feed.entries);
     setWaiting(feed.waiting);
+    setMembers(feed.members);
+    setNudged(sent);
     setLoaded(true);
   }, [pod.id, today]);
 
@@ -290,6 +297,45 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
           <p className="caption">invite code {pod.invite_code}</p>
         </div>
       </div>
+
+      {/* Everyone in the squad, visible to everyone in the squad. */}
+      {members.length > 0 ? (
+        <div className="card-flat" style={{ padding: 12 }}>
+          <button
+            className="btn-ghost row"
+            style={{ width: '100%', padding: 4, gap: 8, justifyContent: 'flex-start' }}
+            onClick={() => setShowMembers(!showMembers)}
+          >
+            <span className="row" style={{ gap: 0 }}>
+              {members.slice(0, 6).map((m, i) => (
+                <span key={m.id} style={{ marginLeft: i === 0 ? 0 : -10 }}>
+                  <Avatar id={m.id} name={m.display_name} size={30} />
+                </span>
+              ))}
+            </span>
+            <span className="caption" style={{ flex: 1, textAlign: 'left' }}>
+              {members.length} of 8 members
+            </span>
+            <ChevronDown size={16} style={{ transform: showMembers ? 'rotate(180deg)' : 'none' }} />
+          </button>
+          {showMembers
+            ? members.map((m) => (
+                <div key={m.id} className="row" style={{ marginTop: 10, paddingLeft: 4 }}>
+                  <Avatar id={m.id} name={m.display_name} size={30} />
+                  <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>
+                    {m.display_name}
+                    {m.id === me.id ? ' (you)' : ''}
+                  </span>
+                  {m.id === pod.created_by ? (
+                    <span className="caption row" style={{ gap: 4 }}>
+                      <Crown size={13} /> owner
+                    </span>
+                  ) : null}
+                </div>
+              ))
+            : null}
+        </div>
+      ) : null}
 
       <p className="caption" style={{ textAlign: 'center' }}>
         Today - the thread resets every day
@@ -359,17 +405,44 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
         );
       })}
 
-      {/* The waiting row is the accountability mechanic - the gap gets named. */}
+      {/* The waiting row is the accountability mechanic - the gap gets named,
+          and anyone can nudge the people it names. */}
       {loaded && waiting.length > 0 ? (
-        <div className="row" style={{ gap: 8, marginTop: 6 }}>
-          <span className="dots">
-            <span />
-            <span />
-            <span />
-          </span>
-          <span className="caption">
-            waiting on {waiting.map((w) => (w.id === me.id ? 'you' : w.display_name)).join(', ')}
-          </span>
+        <div style={{ marginTop: 6 }}>
+          <div className="row" style={{ gap: 8 }}>
+            <span className="dots">
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="caption">
+              waiting on {waiting.map((w) => (w.id === me.id ? 'you' : w.display_name)).join(', ')}
+            </span>
+          </div>
+          {waiting
+            .filter((w) => w.id !== me.id)
+            .map((w) => (
+              <div key={w.id} className="row" style={{ marginTop: 10 }}>
+                <Avatar id={w.id} name={w.display_name} size={30} />
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{w.display_name}</span>
+                {nudged.has(w.id) ? (
+                  <span className="caption row" style={{ gap: 4 }}>
+                    <Check size={13} /> nudged
+                  </span>
+                ) : (
+                  <button
+                    className="btn-secondary row"
+                    style={{ padding: '6px 14px', fontSize: 13, gap: 5 }}
+                    onClick={async () => {
+                      await nudge(pod.id, w.id, today).catch(() => {});
+                      setNudged(new Set([...nudged, w.id]));
+                    }}
+                  >
+                    <BellRing size={13} /> Nudge
+                  </button>
+                )}
+              </div>
+            ))}
         </div>
       ) : null}
 
