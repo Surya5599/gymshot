@@ -2,7 +2,8 @@ import type { Session } from '@supabase/supabase-js';
 import { CalendarDays, Camera, Images, LogOut, Users } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-import { getProfile, updateProfile, type Profile } from './lib/api';
+import { getProfile, isPro, updateProfile, type Profile } from './lib/api';
+import { getManagementUrl } from './lib/billing';
 import { supabase } from './lib/supabase';
 import AuthView from './views/Auth';
 import JourneyView from './views/Journey';
@@ -53,6 +54,27 @@ export default function App() {
           </h2>
         </div>
         <div className="row" style={{ gap: 8 }}>
+          {isPro(profile) ? (
+            <button
+              className="btn-ghost"
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                fontWeight: 700,
+                background: 'var(--accent-soft)',
+                color: 'var(--accent-ink)',
+                border: '1.5px solid var(--line)',
+              }}
+              title="Manage subscription"
+              onClick={async () => {
+                const url = await getManagementUrl(profile.id).catch(() => null);
+                if (url) window.open(url, '_blank');
+                else window.alert('No store subscription to manage on this account.');
+              }}
+            >
+              PRO
+            </button>
+          ) : null}
           <span className="caption">{profile.display_name}</span>
           <button
             className="btn-ghost row"
@@ -73,7 +95,7 @@ export default function App() {
         <PodsView me={profile} active={tab === 'pods'} />
       </div>
       <div hidden={tab !== 'journey'}>
-        <JourneyView active={tab === 'journey'} />
+        <JourneyView active={tab === 'journey'} me={profile} />
       </div>
 
       <nav className="tabbar">

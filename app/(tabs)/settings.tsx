@@ -5,6 +5,7 @@ import { Alert, View } from 'react-native';
 
 import { Avatar, Button, Card, MonthGrid, Screen, Segmented, Squish, Text, Toggle } from '@/components';
 import { DEMO_POD_NAME } from '@/lib/demo';
+import { billingAvailable, buyPackage, manageSubscription, proPackages, restorePurchases } from '@/lib/purchases';
 import { formatBytes, storageFootprint } from '@/lib/photos';
 import { useStore } from '@/state/AppStore';
 import { useTheme } from '@/theme';
@@ -42,11 +43,34 @@ export default function SettingsScreen() {
     clearDemoData,
     resetEverything,
     signOut,
+    proUntil,
+    refreshPro,
   } = useStore();
 
   const [busy, setBusy] = useState<string | null>(null);
+  const [proError, setProError] = useState<string | null>(null);
   const footprint = storageFootprint();
   const hasDemo = pods.some((p) => p.name === DEMO_POD_NAME);
+  const isPro = !!proUntil && new Date(proUntil).getTime() > Date.now();
+
+  const buyPro = async () => {
+    setBusy('pro');
+    setProError(null);
+    try {
+      const { annual, monthly } = await proPackages();
+      const pkg = annual ?? monthly;
+      if (!pkg) throw new Error('No plan is available right now.');
+      await buyPackage(pkg);
+      await refreshPro();
+    } catch (e) {
+      // User-cancelled purchases land here too; stay quiet unless it reads
+      // like a real failure.
+      const msg = e instanceof Error ? e.message : '';
+      if (msg && !/cancel/i.test(msg)) setProError(msg);
+    } finally {
+      setBusy(null);
+    }
+  };
 
   return (
     <Screen tabBarPad>
@@ -110,6 +134,58 @@ export default function SettingsScreen() {
             />
           }
         />
+      </Section>
+
+      {/* ---------------------------------------------------------------- pro */}
+      <Section
+        title="GymShot Pro"
+        note={
+          isPro
+            ? undefined
+            : 'Every squad you want, cloud backup, and timelapse and collage exports.'
+        }
+      >
+        <Row
+          icon="sparkles-outline"
+          title={isPro ? 'Pro is active' : 'Free plan'}
+          subtitle={
+            isPro
+              ? `Renews or ends ${new Date(proUntil!).toLocaleDateString()}`
+              : billingAvailable()
+                ? 'Upgrade any time'
+                : 'Purchases need a store build'
+          }
+          right={
+            !isPro && billingAvailable() ? (
+              <Button label="Go Pro" loading={busy === 'pro'} onPress={() => void buyPro()} />
+            ) : undefined
+          }
+        />
+        {!isPro && billingAvailable() ? (
+          <Button
+            label="Restore purchases"
+            variant="ghost"
+            onPress={async () => {
+              await restorePurchases().catch(() => {});
+              await refreshPro();
+            }}
+          />
+        ) : null}
+        {isPro && billingAvailable() ? (
+          <Button
+            label="Manage or cancel subscription"
+            variant="ghost"
+            onPress={async () => {
+              await manageSubscription().catch(() => {});
+              await refreshPro();
+            }}
+          />
+        ) : null}
+        {proError ? (
+          <Text variant="caption" color="accentInk" style={{ marginTop: t.space.sm }}>
+            {proError}
+          </Text>
+        ) : null}
       </Section>
 
       {/* ------------------------------------------------------------ privacy */}

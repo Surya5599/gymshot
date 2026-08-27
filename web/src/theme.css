@@ -669,3 +669,40 @@ textarea::placeholder {
     animation: none;
   }
 }
+
+.camera-frame .ghost {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.camera-frame .ghost.mirrored {
+  transform: scaleX(-1);
+}
+
+.ghost-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(92vw, 420px);
+  color: #fffcf7;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ghost-slider span {
+  white-space: nowrap;
+}
+
+.ghost-slider input[type='range'] {
+  flex: 1;
+  padding: 0;
+  border: none;
+  background: transparent;
+  accent-color: #cc9a8d;
+}

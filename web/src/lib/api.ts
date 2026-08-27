@@ -11,7 +11,14 @@ export type Profile = {
   display_name: string;
   share_trained: boolean;
   blur_face: boolean;
+  /** Active GymShot Pro until this instant; null = never subscribed. */
+  pro_until: string | null;
 };
+
+/** Pro entitlement is written only by the billing webhook, never the client. */
+export function isPro(p: Profile | null): boolean {
+  return !!p?.pro_until && new Date(p.pro_until).getTime() > Date.now();
+}
 
 export type Pod = {
   id: string;

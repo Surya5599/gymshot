@@ -7,13 +7,14 @@ import {
   ensureCheckin,
   myCheckin,
   myLoggedDays,
+  myTimeline,
   signPhotoUrls,
   updateCheckin,
   uploadPhoto,
   type Angle,
   type CheckIn,
 } from '../lib/api';
-import { toDayKey, type DayKey } from '../lib/date';
+import { formatDay, toDayKey, type DayKey } from '../lib/date';
 import { computeStreak } from '../lib/streak';
 
 export default function TodayView({ active }: { active: boolean }) {
@@ -269,6 +270,26 @@ function CameraModal({
   const [countdown, setCountdown] = useState<number | null>(null);
   const [delay, setDelay] = useState<0 | 3 | 5 | 10>(3);
   const [error, setError] = useState<string | null>(null);
+  const [ghost, setGhost] = useState<{ url: string; day: DayKey } | null>(null);
+  const [ghostOpacity, setGhostOpacity] = useState(0.4);
+
+  // Ghost overlay: the most recent shot at this angle from a previous day,
+  // laid over the live preview so today's photo lines up with the last one.
+  useEffect(() => {
+    let cancelled = false;
+    const today = toDayKey();
+    void (async () => {
+      const rows = await myTimeline(angle);
+      const prev = rows.filter((r) => r.day < today).pop();
+      if (!prev) return;
+      const urls = await signPhotoUrls([prev.path]);
+      const url = urls.get(prev.path);
+      if (url && !cancelled) setGhost({ url, day: prev.day });
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [angle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -354,6 +375,16 @@ function CameraModal({
     <div className="camera-overlay" onClick={onClose}>
       <div className="camera-frame" onClick={(e) => e.stopPropagation()}>
         <video ref={videoRef} className={facing === 'user' ? 'mirrored' : ''} autoPlay playsInline muted />
+        {/* Saved photos are true-camera images; mirror the ghost with the
+            front-camera preview so your body and the ghost move the same way. */}
+        {ghost ? (
+          <img
+            className={`ghost${facing === 'user' ? ' mirrored' : ''}`}
+            src={ghost.url}
+            alt=""
+            style={{ opacity: ghostOpacity }}
+          />
+        ) : null}
         {/* Thirds grid, same alignment aid as the mobile capture screen. */}
         <div className="gridline v" style={{ left: '33.3%' }} />
         <div className="gridline v" style={{ left: '66.6%' }} />
@@ -367,6 +398,20 @@ function CameraModal({
           </div>
         ) : null}
       </div>
+      {ghost ? (
+        <div className="ghost-slider" onClick={(e) => e.stopPropagation()}>
+          <span>Ghost - {formatDay(ghost.day)}</span>
+          <input
+            type="range"
+            min={0}
+            max={0.8}
+            step={0.05}
+            value={ghostOpacity}
+            onChange={(e) => setGhostOpacity(Number(e.target.value))}
+            aria-label="Ghost overlay opacity"
+          />
+        </div>
+      ) : null}
       <div className="camera-controls" onClick={(e) => e.stopPropagation()}>
         <button className="side" title="Cancel" onClick={onClose}>
           <X size={20} />

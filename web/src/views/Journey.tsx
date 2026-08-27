@@ -1,15 +1,18 @@
+import { ImageDown } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
-import { Segmented } from '../components';
-import { ANGLES, myTimeline, signPhotoUrls, type Angle } from '../lib/api';
-import { formatDay, monthName, type DayKey } from '../lib/date';
+import { ProUpsell, Segmented } from '../components';
+import { ANGLES, isPro, myTimeline, signPhotoUrls, type Angle, type Profile } from '../lib/api';
+import { formatDay, fromDayKey, monthName, type DayKey } from '../lib/date';
 
 type Frame = { day: DayKey; path: string; url: string | null };
 
-export default function JourneyView({ active }: { active: boolean }) {
+export default function JourneyView({ active, me }: { active: boolean; me: Profile }) {
   const [angle, setAngle] = useState<Angle>('front');
   const [frames, setFrames] = useState<Frame[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [wantsPro, setWantsPro] = useState(false);
 
   useEffect(() => {
     if (!active) return;
@@ -54,6 +57,33 @@ export default function JourneyView({ active }: { active: boolean }) {
         </p>
       ) : null}
 
+      {/* The payoff moment: first photo next to the latest one, exportable. */}
+      {frames.length >= 2 ? (
+        <>
+          <button
+            className="btn-primary row"
+            style={{ justifyContent: 'center', gap: 8 }}
+            disabled={exporting}
+            onClick={() => {
+              if (!isPro(me)) {
+                setWantsPro(true);
+                return;
+              }
+              setExporting(true);
+              void exportCollage(frames[0], frames[frames.length - 1], angle)
+                .catch(() => {})
+                .finally(() => setExporting(false));
+            }}
+          >
+            <ImageDown size={16} />
+            {exporting ? 'Rendering...' : 'Export before / after'}
+          </button>
+          {wantsPro && !isPro(me) ? (
+            <ProUpsell reason="Exports come with Pro. Your photos stay yours either way." userId={me.id} />
+          ) : null}
+        </>
+      ) : null}
+
       {months.map(([month, monthFrames]) => (
         <div key={month}>
           <p className="eyebrow" style={{ marginBottom: 8 }}>
@@ -87,4 +117,125 @@ export default function JourneyView({ active }: { active: boolean }) {
       ))}
     </div>
   );
+}
+
+/* ------------------------------------------------------------ collage */
+
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function collageDate(day: DayKey): string {
+  const d = fromDayKey(day);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+/** Cover-crop `img` into a rounded, ink-outlined panel with a hard shadow. */
+function drawPanel(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+) {
+  const r = 20;
+  ctx.fillStyle = '#17161a';
+  ctx.beginPath();
+  ctx.roundRect(x + 10, y + 10, w, h, r);
+  ctx.fill();
+
+  const ratio = w / h;
+  let sw = img.width;
+  let sh = img.height;
+  let sx = 0;
+  let sy = 0;
+  if (sw / sh > ratio) {
+    sw = sh * ratio;
+    sx = (img.width - sw) / 2;
+  } else {
+    sh = sw / ratio;
+    sy = (img.height - sh) / 2;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.clip();
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+  ctx.restore();
+  ctx.strokeStyle = '#17161a';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.stroke();
+}
+
+async function exportCollage(first: Frame, last: Frame, angle: Angle): Promise<void> {
+  if (!first.url || !last.url) return;
+  const [a, b] = await Promise.all([loadImage(first.url), loadImage(last.url)]);
+
+  const P = 56;
+  const GAP = 44;
+  const W = 1080;
+  const panelW = (W - P * 2 - GAP) / 2;
+  const panelH = Math.round(panelW / 0.74);
+  const headerH = 130;
+  const labelH = 88;
+  const H = headerH + panelH + labelH + P;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.fillStyle = '#ecf0e2';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.font = '54px "Archivo Black", sans-serif';
+  ctx.fillStyle = '#17161a';
+  ctx.fillText('GYM', P, 92);
+  ctx.fillStyle = '#cc9a8d';
+  ctx.fillText('SHOT', P + ctx.measureText('GYM').width, 92);
+
+  const days = Math.round((fromDayKey(last.day).getTime() - fromDayKey(first.day).getTime()) / 86400000);
+  ctx.font = '700 26px Archivo, sans-serif';
+  ctx.fillStyle = '#5b6053';
+  const tag = `${days} DAYS - ${angle.toUpperCase()}`;
+  ctx.fillText(tag, W - P - ctx.measureText(tag).width, 88);
+
+  drawPanel(ctx, a, P, headerH, panelW, panelH);
+  drawPanel(ctx, b, P + panelW + GAP, headerH, panelW, panelH);
+
+  ctx.font = '700 30px Archivo, sans-serif';
+  ctx.fillStyle = '#17161a';
+  const labelY = headerH + panelH + 56;
+  ctx.fillText(collageDate(first.day), P, labelY);
+  const lastLabel = collageDate(last.day);
+  ctx.fillText(lastLabel, W - P - ctx.measureText(lastLabel).width, labelY);
+
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) return;
+
+  const file = new File([blob], `gymshot-${angle}-${first.day}-to-${last.day}.png`, { type: 'image/png' });
+  if (navigator.canShare?.({ files: [file] })) {
+    await navigator.share({ files: [file] }).catch(() => downloadBlob(blob, file.name));
+  } else {
+    downloadBlob(blob, file.name);
+  }
+}
+
+function downloadBlob(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
 }

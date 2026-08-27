@@ -1,7 +1,7 @@
 import { Check, ChevronLeft, ChevronRight, Clock, Dumbbell, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
-import { Avatar } from '../components';
+import { Avatar, ProUpsell } from '../components';
 import {
   approveJoinRequest,
   cancelJoinRequest,
@@ -13,6 +13,7 @@ import {
   podFeed,
   REACTIONS,
   requestJoinByCode,
+  isPro,
   toggleReaction,
   type FeedEntry,
   type IncomingJoinRequest,
@@ -136,8 +137,15 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
         </div>
       ) : null}
 
-      <NewPod onDone={() => void load()} />
-      <JoinPod onDone={() => void load()} />
+      {/* Free tier is one squad; the server enforces this too. */}
+      {pods.length >= 1 && !isPro(me) ? (
+        <ProUpsell reason="You are in your free squad. More squads come with Pro." userId={me.id} />
+      ) : (
+        <>
+          <NewPod onDone={() => void load()} />
+          <JoinPod onDone={() => void load()} />
+        </>
+      )}
     </div>
   );
 }

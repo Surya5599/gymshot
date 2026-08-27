@@ -8,6 +8,7 @@ import { addDays, DayKey, toDayKey } from '@/lib/date';
 import { loadDemoPod, removeDemoData } from '@/lib/demo';
 import { healthProvider, syncRecentHealth } from '@/lib/health';
 import { deleteStoredPhoto, storeCheckInPhoto } from '@/lib/photos';
+import { configureBilling } from '@/lib/purchases';
 import { pushDisplayName, supabase } from '@/lib/supabase';
 import { cancelDailyReminder, requestReminderPermission, scheduleDailyReminder } from '@/lib/reminders';
 import { computeStreak, StreakInfo } from '@/lib/streak';
@@ -17,6 +18,9 @@ type Store = {
   /** Supabase auth session; null while signed out. Valid once `authReady`. */
   session: Session | null;
   authReady: boolean;
+  /** Active GymShot Pro until this instant; written only by the billing webhook. */
+  proUntil: string | null;
+  refreshPro: () => Promise<void>;
   me: User | null;
   settings: Settings;
   pods: Pod[];
@@ -97,6 +101,7 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [proUntil, setProUntil] = useState<string | null>(null);
   const [me, setMe] = useState<User | null>(null);
   // Actions read the profile through this ref, not the `me` state. signUp()
   // creates the row and refreshes, but a handler that calls signUp() and then
@@ -171,6 +176,26 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  const refreshPro = useCallback(async () => {
+    const { data } = await supabase.auth.getSession();
+    const userId = data.session?.user.id;
+    if (!userId) {
+      setProUntil(null);
+      return;
+    }
+    const { data: row } = await supabase.from('profiles').select('pro_until').eq('id', userId).single();
+    setProUntil((row?.pro_until as string | null) ?? null);
+  }, []);
+
+  useEffect(() => {
+    if (!session) {
+      setProUntil(null);
+      return;
+    }
+    configureBilling(session.user.id);
+    refreshPro().catch(() => {});
+  }, [session, refreshPro]);
 
   /* --------------------------------------------------------------- actions */
 
@@ -397,6 +422,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       ready,
       session,
       authReady,
+      proUntil,
+      refreshPro,
       me,
       settings,
       pods,
@@ -436,6 +463,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
       ready,
       session,
       authReady,
+      proUntil,
+      refreshPro,
       me,
       settings,
       pods,
