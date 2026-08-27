@@ -164,9 +164,9 @@ function drawPanel(
   h: number
 ) {
   const r = 20;
-  ctx.fillStyle = '#17161a';
+  ctx.fillStyle = 'rgba(60, 48, 35, 0.18)';
   ctx.beginPath();
-  ctx.roundRect(x + 10, y + 10, w, h, r);
+  ctx.roundRect(x + 4, y + 6, w, h, r);
   ctx.fill();
 
   const ratio = w / h;
@@ -187,8 +187,8 @@ function drawPanel(
   ctx.clip();
   ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
   ctx.restore();
-  ctx.strokeStyle = '#17161a';
-  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 10;
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
   ctx.stroke();
@@ -213,26 +213,26 @@ async function exportCollage(first: Frame, last: Frame, angle: Angle): Promise<v
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
-  ctx.fillStyle = '#ecf0e2';
+  ctx.fillStyle = '#fbf8f2';
   ctx.fillRect(0, 0, W, H);
 
-  ctx.font = '54px "Archivo Black", sans-serif';
-  ctx.fillStyle = '#17161a';
-  ctx.fillText('GYM', P, 92);
-  ctx.fillStyle = '#cc9a8d';
-  ctx.fillText('SHOT', P + ctx.measureText('GYM').width, 92);
+  ctx.font = '600 54px Fraunces, Georgia, serif';
+  ctx.fillStyle = '#201d1a';
+  ctx.fillText('GymShot', P, 92);
+  ctx.fillStyle = '#c4552d';
+  ctx.fillText('.', P + ctx.measureText('GymShot').width, 92);
 
   const days = Math.round((fromDayKey(last.day).getTime() - fromDayKey(first.day).getTime()) / 86400000);
-  ctx.font = '700 26px Archivo, sans-serif';
-  ctx.fillStyle = '#5b6053';
-  const tag = `${days} DAYS - ${angle.toUpperCase()}`;
+  ctx.font = '700 26px Karla, sans-serif';
+  ctx.fillStyle = '#6b645c';
+  const tag = `${days} days - ${angle}`;
   ctx.fillText(tag, W - P - ctx.measureText(tag).width, 88);
 
   drawPanel(ctx, a, P, headerH, panelW, panelH);
   drawPanel(ctx, b, P + panelW + GAP, headerH, panelW, panelH);
 
-  ctx.font = '700 30px Archivo, sans-serif';
-  ctx.fillStyle = '#17161a';
+  ctx.font = '700 30px Karla, sans-serif';
+  ctx.fillStyle = '#201d1a';
   const labelY = headerH + panelH + 56;
   ctx.fillText(collageDate(first.day), P, labelY);
   const lastLabel = collageDate(last.day);
@@ -422,12 +422,12 @@ async function recordTimelapse(images: HTMLImageElement[], frames: Frame[], angl
       sy = (img.height - sh) / 2;
     }
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
-    ctx.fillStyle = 'rgba(23,22,26,0.65)';
+    ctx.fillStyle = 'rgba(32,29,26,0.65)';
     ctx.beginPath();
     ctx.roundRect(20, H - 62, 220, 42, 999);
     ctx.fill();
     ctx.fillStyle = '#fffcf7';
-    ctx.font = '700 22px Archivo, sans-serif';
+    ctx.font = '700 22px Karla, sans-serif';
     ctx.fillText(collageDate(day), 36, H - 33);
   };
 

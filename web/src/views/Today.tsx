@@ -113,9 +113,8 @@ export default function TodayView({ active }: { active: boolean }) {
         <Stat value={`${streak.monthLogged}/${streak.monthDays}`} label="this month" />
       </div>
 
-      <div className="card">
-        <p className="eyebrow">Today's photos</p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 12 }}>
+      <div className="print-card">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
           {ANGLES.map((angle) => (
             <AngleTile
               key={angle}
@@ -126,6 +125,10 @@ export default function TodayView({ active }: { active: boolean }) {
               onCamera={() => setCameraFor(angle)}
             />
           ))}
+        </div>
+        <div className="print-footer">
+          <span className="brand">GymShot</span>
+          <span className="caption">{formatDay(today)}</span>
         </div>
         {error ? <p className="error" role="alert" style={{ marginTop: 10 }}>{error}</p> : null}
       </div>

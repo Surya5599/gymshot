@@ -50,7 +50,7 @@ export default function App() {
             <Camera size={20} strokeWidth={2.4} />
           </div>
           <h2 className="wordmark">
-            Gym<span>Shot</span>
+            GymShot<span>.</span>
           </h2>
         </div>
         <div className="row" style={{ gap: 8 }}>

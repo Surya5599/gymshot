@@ -44,7 +44,7 @@ export default function AuthView() {
         <Camera size={26} strokeWidth={2.4} />
       </div>
       <h1 className="wordmark" style={{ fontSize: 34, marginTop: 18 }}>
-        Gym<span>Shot</span>
+        GymShot<span>.</span>
       </h1>
       <p className="notice" style={{ marginTop: 8 }}>
         {mode === 'signin'

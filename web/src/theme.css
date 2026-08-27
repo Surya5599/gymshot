@@ -1,37 +1,66 @@
-/* GymShot web theme.
-   Direction: soft neo-brutalism - a pale sage field, dusty rose and muted
-   mint, near-black ink, and the signature move: 2px ink outlines carrying
-   hard offset shadows (no blur, ever). Chunky pills, Archivo Black display. */
+/* GymShot web theme - "Photobooth Journal".
+   A daily ritual kept on warm paper: photographs print as white-bordered
+   booth strips, the month is a page of stamps, and the squad thread reads
+   like prints taped into a shared scrapbook. Fraunces speaks, Karla works.
+   Elevation is one soft shadow; photographs are the only saturated thing
+   on the page besides terracotta ink. */
 
 :root {
   color-scheme: light;
-  --bg: #ecf0e2;
-  --surface: #ffffff;
-  --surface-alt: #f7f9f0;
-  --surface-sunken: #e2e7d6;
-  --ink: #17161a;
-  --ink-soft: #5b6053;
-  --ink-faint: #979c8b;
-  --ink-inverse: #fffcf7;
-  --accent: #cc9a8d;
-  --accent-soft: #ebd1c9;
-  --accent-ink: #8c5b4d;
-  --mint: #adc9b8;
-  --mint-deep: #7fa890;
-  --line: #17161a;
+  --paper: #fbf8f2;
+  --surface: #fffefb;
+  --sunken: #f1ebe0;
+  --ink: #201d1a;
+  --ink-soft: #6b645c;
+  --ink-faint: #a39a8e;
+  --ink-inverse: #fffdf8;
+  --accent: #c4552d;
+  --accent-soft: #f4e0d5;
+  --accent-ink: #8f3c1d;
+  --moss: #587a5e;
+  --moss-soft: #e4ebe0;
+  --line: #e3dbcd;
+  --shadow-card: 0 2px 12px rgba(60, 48, 35, 0.09);
+  --shadow-print: 0 3px 16px rgba(60, 48, 35, 0.16);
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Karla', system-ui, sans-serif;
+}
+
+/* Legacy variable names still used in view inline styles map onto the new
+   world so nothing falls back to browser defaults. */
+:root {
+  --bg: var(--paper);
+  --surface-alt: var(--sunken);
+  --surface-sunken: var(--sunken);
+  --mint: var(--moss-soft);
+  --mint-deep: var(--moss);
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--paper);
   color: var(--ink);
-  font-family: 'Archivo', system-ui, sans-serif;
+  font-family: var(--font-body);
   font-size: 16px;
-  line-height: 1.45;
+  line-height: 1.5;
+  caret-color: var(--accent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 #root {
@@ -44,13 +73,9 @@ h1,
 h2,
 h3 {
   margin: 0;
-  font-family: 'Archivo Black', 'Archivo', sans-serif;
-  font-weight: 400;
-  letter-spacing: 0.01em;
-}
-
-h1 {
-  text-transform: uppercase;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 strong {
@@ -58,8 +83,8 @@ strong {
 }
 
 .wordmark {
-  text-transform: uppercase;
-  font-size: 22px;
+  font-size: 24px;
+  font-weight: 600;
 }
 
 .wordmark span {
@@ -67,34 +92,48 @@ strong {
 }
 
 button {
-  font-family: inherit;
+  font-family: var(--font-body);
   cursor: pointer;
-  border: 2px solid var(--line);
-  border-radius: 999px;
+  border: none;
+  border-radius: 10px;
   font-weight: 700;
   font-size: 15px;
-  padding: 12px 24px;
+  padding: 12px 22px;
   color: var(--ink);
-  box-shadow: 3px 3px 0 var(--line);
-  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
 }
 
 button:active {
-  transform: translate(3px, 3px);
-  box-shadow: 0 0 0 var(--line);
+  transform: translateY(0);
 }
 
 button:disabled {
   opacity: 0.45;
   cursor: default;
+  transform: none;
 }
 
 .btn-primary {
   background: var(--accent);
+  color: var(--ink-inverse);
+  box-shadow: var(--shadow-card);
+}
+
+.btn-primary:hover {
+  background: var(--accent-ink);
 }
 
 .btn-secondary {
   background: var(--surface);
+  border: 1px solid var(--line);
+}
+
+.btn-secondary:hover {
+  border-color: var(--ink-faint);
 }
 
 .btn-danger {
@@ -105,30 +144,31 @@ button:disabled {
 .btn-ghost {
   background: transparent;
   color: var(--ink-soft);
-  border: none;
-  box-shadow: none;
+  font-weight: 600;
 }
 
-.btn-ghost:active {
-  transform: scale(0.96);
+.btn-ghost:hover {
+  color: var(--ink);
+  transform: none;
 }
 
 input,
 textarea {
-  font-family: inherit;
+  font-family: var(--font-body);
   font-size: 16px;
   color: var(--ink);
   background: var(--surface);
-  border: 2px solid var(--line);
-  border-radius: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
   padding: 12px 15px;
   width: 100%;
   outline: none;
+  transition: border-color 140ms ease;
 }
 
 input:focus,
 textarea:focus {
-  box-shadow: 3px 3px 0 var(--line);
+  border-color: var(--accent);
 }
 
 input::placeholder,
@@ -138,25 +178,25 @@ textarea::placeholder {
 
 .card {
   background: var(--surface);
-  border: 2px solid var(--line);
-  border-radius: 18px;
+  border-radius: 14px;
   padding: 18px;
-  box-shadow: 5px 5px 0 var(--line);
+  box-shadow: var(--shadow-card);
 }
 
 .card-flat {
-  background: var(--surface-alt);
-  border: 2px solid var(--line);
-  border-radius: 18px;
+  background: var(--sunken);
+  border-radius: 14px;
   padding: 18px;
 }
 
+/* Section labels read as small serif headings, not shouting kickers. */
 .eyebrow {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-transform: none;
 }
 
 .caption {
@@ -173,14 +213,13 @@ textarea::placeholder {
 .icon-badge {
   width: 42px;
   height: 42px;
-  border-radius: 13px;
-  border: 2px solid var(--line);
+  border-radius: 12px;
   background: var(--accent);
-  box-shadow: 3px 3px 0 var(--line);
+  box-shadow: var(--shadow-card);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--ink);
+  color: var(--ink-inverse);
   flex-shrink: 0;
 }
 
@@ -192,12 +231,11 @@ textarea::placeholder {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 4px;
+  gap: 2px;
   background: var(--surface);
-  border: 2px solid var(--line);
   border-radius: 999px;
   padding: 6px;
-  box-shadow: 4px 4px 0 var(--line);
+  box-shadow: var(--shadow-print);
   z-index: 10;
 }
 
@@ -205,33 +243,29 @@ textarea::placeholder {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 9px 18px;
-  font-size: 13px;
+  padding: 9px 16px;
+  font-size: 13.5px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  border-radius: 999px;
   background: transparent;
   color: var(--ink-soft);
-  border: 2px solid transparent;
-  box-shadow: none;
 }
 
-.tabbar button:active {
-  transform: scale(0.96);
+.tabbar button:hover {
+  transform: none;
+  color: var(--ink);
 }
 
 .tabbar button.active {
-  background: var(--accent);
-  color: var(--ink);
-  border-color: var(--line);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
 }
 
 /* ------------------------------------------------------------ segmented */
 
 .segmented {
   display: flex;
-  background: var(--surface-sunken);
-  border: 2px solid var(--line);
+  background: var(--sunken);
   border-radius: 999px;
   padding: 4px;
 }
@@ -239,28 +273,29 @@ textarea::placeholder {
 .segmented button {
   flex: 1;
   padding: 8px 0;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  border-radius: 999px;
   background: transparent;
   color: var(--ink-soft);
-  border: 2px solid transparent;
-  box-shadow: none;
+}
+
+.segmented button:hover {
+  transform: none;
 }
 
 .segmented button.active {
   background: var(--surface);
   color: var(--ink);
-  border-color: var(--line);
+  box-shadow: var(--shadow-card);
 }
 
-/* ----------------------------------------------------------- month grid */
+/* --------------------------------------------- month grid as a stamp page */
 
 .monthgrid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 5px;
+  gap: 6px;
 }
 
 .monthgrid .wd {
@@ -272,69 +307,92 @@ textarea::placeholder {
 
 .monthgrid .cell {
   aspect-ratio: 1;
-  border-radius: 9px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   font-weight: 700;
-  color: var(--ink-soft);
-  background: var(--surface-sunken);
-  border: 1.5px solid transparent;
+  color: var(--ink-faint);
+  background: transparent;
+  border: 1px dashed var(--line);
 }
 
 .monthgrid .cell.posted {
   background: var(--accent);
-  color: var(--ink);
-  border-color: var(--line);
-  box-shadow: 2px 2px 0 var(--line);
+  border: none;
+  color: var(--ink-inverse);
+  transform: rotate(-6deg);
 }
 
 .monthgrid .cell.today {
-  border-color: var(--line);
-  background: var(--surface);
+  border: 1.5px solid var(--ink);
+  color: var(--ink);
 }
 
 .monthgrid .cell.future {
-  background: transparent;
-  opacity: 0.5;
+  border-color: transparent;
+  color: var(--ink-faint);
+  opacity: 0.55;
 }
 
 .monthgrid .cell.blank {
+  border: none;
   background: transparent;
 }
 
-/* --------------------------------------------------------------- thread */
+/* -------------------------------------- the thread: prints in a scrapbook */
 
 .bubble {
-  max-width: 78%;
-  border-radius: 18px;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 2px solid var(--line);
-  box-shadow: 3px 3px 0 var(--line);
+  max-width: 80%;
+  border-radius: 4px;
+  padding: 10px 10px 12px;
+  background: #fff;
+  box-shadow: var(--shadow-print);
   position: relative;
 }
 
+/* A strip of translucent tape holds each print to the page. */
+.bubble::before {
+  content: '';
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  width: 74px;
+  height: 20px;
+  transform: translateX(-50%) rotate(-2deg);
+  background: rgba(214, 199, 176, 0.5);
+  box-shadow: inset 0 0 4px rgba(60, 48, 35, 0.12);
+}
+
 .bubble.mine {
-  background: var(--accent);
-  color: var(--ink);
   margin-left: auto;
+  transform: rotate(0.6deg);
+}
+
+.bubble:not(.mine) {
+  transform: rotate(-0.7deg);
 }
 
 .bubble img {
   display: block;
   width: 200px;
   max-width: 100%;
-  border-radius: 12px;
-  border: 1.5px solid var(--line);
+  border-radius: 2px;
+}
+
+.bubble p {
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--ink-soft);
 }
 
 .avatar {
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  border: 2px solid var(--line);
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-card);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -349,11 +407,10 @@ textarea::placeholder {
   bottom: -12px;
   right: -6px;
   background: var(--surface);
-  border: 2px solid var(--line);
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   font-size: 13px;
-  box-shadow: 2px 2px 0 var(--line);
+  box-shadow: var(--shadow-card);
 }
 
 .bubble.mine .tapback {
@@ -363,12 +420,11 @@ textarea::placeholder {
 
 .reaction-picker {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   background: var(--surface);
-  border: 2px solid var(--line);
   border-radius: 999px;
-  padding: 5px 8px;
-  box-shadow: 3px 3px 0 var(--line);
+  padding: 4px 6px;
+  box-shadow: var(--shadow-print);
   width: fit-content;
 }
 
@@ -377,8 +433,6 @@ textarea::placeholder {
   padding: 8px 10px;
   font-size: 20px;
   border-radius: 50%;
-  border: none;
-  box-shadow: none;
 }
 
 .reaction-picker button.chosen {
@@ -413,12 +467,101 @@ textarea::placeholder {
   animation-delay: 0.4s;
 }
 
-/* -------------------------------------------------------------- journey */
+/* The one authored moment: a print develops when it lands on the page. */
+@keyframes develop {
+  from {
+    opacity: 0;
+    filter: brightness(1.5) contrast(0.7);
+    transform: rotate(-0.7deg) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: rotate(-0.7deg) translateY(0);
+  }
+}
+
+@keyframes develop-mine {
+  from {
+    opacity: 0;
+    filter: brightness(1.5) contrast(0.7);
+    transform: rotate(0.6deg) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: rotate(0.6deg) translateY(0);
+  }
+}
+
+@keyframes develop-flat {
+  from {
+    opacity: 0;
+    filter: brightness(1.5) contrast(0.7);
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    filter: none;
+    transform: translateY(0);
+  }
+}
+
+.bubble:not(.mine) {
+  animation: develop 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.bubble.mine {
+  animation: develop-mine 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.print-card {
+  animation: develop-flat 480ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* --------------------------------------- today's strip and journey prints */
+
+/* The signature: today's three angles as one photobooth print. */
+.print-card {
+  background: #fff;
+  border-radius: 4px;
+  padding: 12px;
+  box-shadow: var(--shadow-print);
+}
+
+.print-card .print-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 10px 2px 0;
+}
+
+.print-card .print-footer .brand {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
 
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 12px;
+}
+
+.photo-grid > div {
+  background: #fff;
+  padding: 5px 5px 16px;
+  border-radius: 3px;
+  box-shadow: var(--shadow-card);
+}
+
+.photo-grid > div:nth-child(odd) {
+  transform: rotate(-0.7deg);
+}
+
+.photo-grid > div:nth-child(even) {
+  transform: rotate(0.6deg);
 }
 
 .photo-grid img,
@@ -426,46 +569,45 @@ textarea::placeholder {
   width: 100%;
   aspect-ratio: 0.74;
   object-fit: cover;
-  border-radius: 12px;
-  border: 2px solid var(--line);
+  border-radius: 2px;
   display: block;
 }
 
 .angle-tile {
   position: relative;
-  border-radius: 12px;
 }
 
 .angle-tile .empty {
   aspect-ratio: 0.74;
-  border: 2px dashed var(--line);
-  border-radius: 12px;
+  border: 1.5px dashed var(--line);
+  border-radius: 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 6px;
   color: var(--ink-soft);
-  background: var(--surface-alt);
+  background: var(--paper);
   cursor: pointer;
   font-weight: 700;
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 13px;
+}
+
+.angle-tile .empty:hover {
+  border-color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .angle-tile .label {
   position: absolute;
   bottom: 8px;
   left: 8px;
-  background: var(--ink);
+  background: rgba(32, 29, 26, 0.68);
   color: var(--ink-inverse);
   border-radius: 999px;
   padding: 2px 10px;
   font-size: 11px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .blur-strip {
@@ -484,29 +626,28 @@ textarea::placeholder {
   width: 52px;
   height: 31px;
   border-radius: 999px;
-  background: var(--surface-sunken);
-  padding: 2px;
-  border: 2px solid var(--line);
-  box-shadow: 2px 2px 0 var(--line);
+  background: var(--sunken);
+  padding: 3px;
+  border: none;
   display: flex;
+  transition: background 180ms ease;
 }
 
-.toggle:active {
-  transform: translate(2px, 2px);
-  box-shadow: 0 0 0 var(--line);
+.toggle:hover {
+  transform: none;
 }
 
 .toggle.on {
-  background: var(--mint-deep);
+  background: var(--moss);
   justify-content: flex-end;
 }
 
 .toggle .knob {
-  width: 23px;
-  height: 23px;
+  width: 25px;
+  height: 25px;
   border-radius: 50%;
   background: var(--surface);
-  border: 2px solid var(--line);
+  box-shadow: 0 1px 4px rgba(60, 48, 35, 0.3);
 }
 
 .error {
@@ -525,7 +666,7 @@ textarea::placeholder {
 .camera-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(16, 16, 14, 0.9);
+  background: rgba(24, 20, 16, 0.92);
   z-index: 50;
   display: flex;
   flex-direction: column;
@@ -539,10 +680,11 @@ textarea::placeholder {
   position: relative;
   width: min(92vw, 420px);
   aspect-ratio: 0.74;
-  border-radius: 20px;
-  border: 2px solid #fffcf7;
+  border-radius: 6px;
+  border: 6px solid #fffdf8;
   overflow: hidden;
   background: #000;
+  box-shadow: var(--shadow-print);
 }
 
 .camera-frame video {
@@ -557,7 +699,7 @@ textarea::placeholder {
 
 .camera-frame .gridline {
   position: absolute;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 253, 248, 0.25);
 }
 
 .camera-frame .gridline.v {
@@ -578,96 +720,23 @@ textarea::placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: var(--font-display);
   font-size: 96px;
-  font-family: 'Archivo Black', sans-serif;
-  color: #fff;
-  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
+  font-weight: 600;
+  color: #fffdf8;
+  text-shadow: 0 3px 14px rgba(0, 0, 0, 0.55);
 }
 
 .camera-frame .angle-badge {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  background: #fffcf7;
-  color: #17161a;
+  top: 10px;
+  left: 10px;
+  background: #fffdf8;
+  color: var(--ink);
   border-radius: 999px;
   padding: 3px 12px;
   font-size: 12px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.camera-controls {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-}
-
-.camera-controls .shutter {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: #fffcf7;
-  border: 3px solid #17161a;
-  box-shadow: 0 0 0 4px rgba(255, 252, 247, 0.35);
-  padding: 0;
-}
-
-.camera-controls .side {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: rgba(255, 252, 247, 0.16);
-  border: 2px solid rgba(255, 252, 247, 0.6);
-  box-shadow: none;
-  color: #fffcf7;
-  font-size: 15px;
-  font-weight: 700;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tile-actions {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  display: flex;
-  gap: 4px;
-}
-
-.tile-actions button {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1.5px solid var(--ink-inverse);
-  box-shadow: none;
-  padding: 0;
-  font-size: 14px;
-  background: var(--ink);
-  color: var(--ink-inverse);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dots span,
-  .spin {
-    animation: none;
-  }
 }
 
 .camera-frame .ghost {
@@ -688,11 +757,9 @@ textarea::placeholder {
   align-items: center;
   gap: 12px;
   width: min(92vw, 420px);
-  color: #fffcf7;
-  font-size: 12px;
+  color: #fffdf8;
+  font-size: 13px;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .ghost-slider span {
@@ -704,5 +771,81 @@ textarea::placeholder {
   padding: 0;
   border: none;
   background: transparent;
-  accent-color: #cc9a8d;
+  accent-color: var(--accent);
+}
+
+.camera-controls {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.camera-controls .shutter {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: #fffdf8;
+  border: 3px solid var(--accent);
+  box-shadow: 0 0 0 5px rgba(255, 253, 248, 0.28);
+  padding: 0;
+}
+
+.camera-controls .side {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 253, 248, 0.14);
+  border: 1px solid rgba(255, 253, 248, 0.5);
+  color: #fffdf8;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tile-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.tile-actions button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 14px;
+  background: rgba(32, 29, 26, 0.68);
+  color: var(--ink-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dots span,
+  .spin,
+  .bubble,
+  .bubble.mine,
+  .print-card {
+    animation: none;
+  }
+  button,
+  .toggle {
+    transition: none;
+  }
 }
