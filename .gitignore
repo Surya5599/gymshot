@@ -27,3 +27,6 @@ npm-debug.*
 
 expo-env.d.ts
 # @end expo-cli
+# AI tooling, installed locally per machine
+.agents/
+.claude/skills/
