@@ -274,7 +274,7 @@ function TimelapseModal({
   onClose: () => void;
 }) {
   const [index, setIndex] = useState(0);
-  const [running, setRunning] = useState(true);
+  const [running, setRunning] = useState(() => !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const imagesRef = useRef<HTMLImageElement[] | null>(null);
@@ -350,10 +350,10 @@ function TimelapseModal({
         </p>
       ) : null}
       <div className="camera-controls" onClick={(e) => e.stopPropagation()}>
-        <button className="side" title="Close" onClick={onClose}>
+        <button className="side" title="Close" aria-label="Close timelapse" onClick={onClose}>
           <X size={20} />
         </button>
-        <button className="side" title={running ? 'Pause' : 'Play'} onClick={() => setRunning(!running)}>
+        <button className="side" title={running ? 'Pause' : 'Play'} aria-label={running ? 'Pause' : 'Play'} onClick={() => setRunning(!running)}>
           {running ? <Pause size={20} /> : <Play size={20} />}
         </button>
         <button

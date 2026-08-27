@@ -58,7 +58,21 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
       </div>
 
       {pods.map((p) => (
-        <div key={p.id} className="card row" style={{ cursor: 'pointer' }} onClick={() => setOpen(p)}>
+        <div
+          key={p.id}
+          className="card row"
+          style={{ cursor: 'pointer' }}
+          role="button"
+          tabIndex={0}
+          aria-label={`Open squad ${p.name}`}
+          onClick={() => setOpen(p)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setOpen(p);
+            }
+          }}
+        >
           <span style={{ fontSize: 24 }}>{p.emoji}</span>
           <div style={{ flex: 1 }}>
             <strong>{p.name}</strong>
@@ -99,6 +113,7 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
                 className="btn-ghost"
                 style={{ padding: 6 }}
                 title="Decline"
+                aria-label="Decline request"
                 onClick={async () => {
                   await declineJoinRequest(r.pod_id, r.user_id);
                   await load();
@@ -357,8 +372,17 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
               <div
                 className={`bubble${mine ? ' mine' : ''}`}
                 style={{ cursor: mine ? 'default' : 'pointer' }}
+                role={mine ? undefined : 'button'}
+                tabIndex={mine ? undefined : 0}
+                aria-label={mine ? undefined : `React to ${entry.author.display_name}'s check-in`}
                 onClick={() => {
                   if (!mine) setPickerFor(pickerFor === entry.checkin.id ? null : entry.checkin.id);
+                }}
+                onKeyDown={(e) => {
+                  if (!mine && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    setPickerFor(pickerFor === entry.checkin.id ? null : entry.checkin.id);
+                  }
                 }}
               >
                 <div className="row" style={{ gap: 6, alignItems: 'stretch' }}>
@@ -388,6 +412,7 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
                   {REACTIONS.map((emoji) => (
                     <button
                       key={emoji}
+                      aria-label={`React with ${emoji}`}
                       className={entry.reactions.some((r) => r.user_id === me.id && r.emoji === emoji) ? 'chosen' : ''}
                       onClick={async () => {
                         await toggleReaction(entry.checkin.id, emoji);

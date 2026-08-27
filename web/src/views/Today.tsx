@@ -127,7 +127,7 @@ export default function TodayView({ active }: { active: boolean }) {
             />
           ))}
         </div>
-        {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
+        {error ? <p className="error" role="alert" style={{ marginTop: 10 }}>{error}</p> : null}
       </div>
 
       {cameraFor ? (
@@ -237,10 +237,10 @@ function AngleTile({
           <img src={url} alt={`${angle} photo`} onClick={takePhoto} style={{ cursor: 'pointer' }} />
           <span className="label">{angle}</span>
           <div className="tile-actions">
-            <button title="Retake with camera" onClick={takePhoto}>
+            <button title="Retake with camera" aria-label="Retake with camera" onClick={takePhoto}>
               <Camera size={14} />
             </button>
-            <button title="Upload a file" onClick={() => input.current?.click()}>
+            <button title="Upload a file" aria-label="Upload a file" onClick={() => input.current?.click()}>
               <Upload size={14} />
             </button>
           </div>
@@ -430,10 +430,10 @@ function CameraModal({
         </div>
       ) : null}
       <div className="camera-controls" onClick={(e) => e.stopPropagation()}>
-        <button className="side" title="Cancel" onClick={onClose}>
+        <button className="side" title="Cancel" aria-label="Close camera" onClick={onClose}>
           <X size={20} />
         </button>
-        <button className="side" title="Self-timer" onClick={cycleTimer} disabled={!!error}>
+        <button className="side" title="Self-timer" aria-label="Cycle self-timer" onClick={cycleTimer} disabled={!!error}>
           {delay === 0 ? <TimerOff size={18} /> : (
             <span className="row" style={{ gap: 3 }}>
               <Timer size={15} />
@@ -441,10 +441,11 @@ function CameraModal({
             </span>
           )}
         </button>
-        <button className="shutter" title="Take photo" onClick={shoot} disabled={!!error || countdown !== null} />
+        <button className="shutter" title="Take photo" aria-label="Take photo" onClick={shoot} disabled={!!error || countdown !== null} />
         <button
           className="side"
           title="Flip camera"
+          aria-label="Flip camera"
           onClick={() => setFacing(facing === 'user' ? 'environment' : 'user')}
           disabled={!!error}
         >

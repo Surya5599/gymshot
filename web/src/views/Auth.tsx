@@ -73,8 +73,8 @@ export default function AuthView() {
         }}
       />
 
-      {error ? <p className="error" style={{ marginTop: 10 }}>{error}</p> : null}
-      {notice ? <p className="notice" style={{ marginTop: 10 }}>{notice}</p> : null}
+      {error ? <p className="error" role="alert" style={{ marginTop: 10 }}>{error}</p> : null}
+      {notice ? <p className="notice" role="status" style={{ marginTop: 10 }}>{notice}</p> : null}
 
       <button
         className="btn-primary"

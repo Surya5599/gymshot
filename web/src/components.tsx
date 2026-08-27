@@ -115,7 +115,11 @@ export function MonthGrid({ logged, today }: { logged: readonly DayKey[]; today:
   const loggedSet = new Set(logged.filter((d) => d.startsWith(prefix)).map((d) => Number(d.slice(8))));
 
   return (
-    <div className="monthgrid">
+    <div
+      className="monthgrid"
+      role="img"
+      aria-label={`${loggedSet.size} of ${todayNum} days posted so far this month`}
+    >
       {WEEKDAYS.map((w, i) => (
         <div key={`${w}-${i}`} className="wd">
           {w}
