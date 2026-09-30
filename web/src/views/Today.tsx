@@ -12,103 +12,58 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { useMutation, useQuery } from 'convex/react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import { api } from '../../convex/_generated/api';
 import { MonthGrid, Toggle } from '../components';
 import { Celebration, CountUp, type CelebrationInfo } from '../fx';
-import {
-  ANGLES,
-  ensureCheckin,
-  listPods,
-  myCheckin,
-  myLoggedDays,
-  myTimeline,
-  nudgesForMe,
-  signPhotoUrls,
-  updateCheckin,
-  uploadPhoto,
-  type Angle,
-  type CheckIn,
-} from '../lib/api';
+import { ANGLES, errorText, useEpoch, useUploadPhoto, type Angle } from '../lib/api';
 import { formatDay, toDayKey, type DayKey } from '../lib/date';
 import { feedback, play } from '../lib/sfx';
 import { computeStreak } from '../lib/streak';
-import { supabase } from '../lib/supabase';
 import { useNotify } from '../notify';
 
 /** Streak-at-risk warnings start in the evening, when there is still time. */
 const AT_RISK_HOUR = 17;
 
-export default function TodayView({ active, boothRequest }: { active: boolean; boothRequest: number }) {
+export default function TodayView({ boothRequest }: { active: boolean; boothRequest: number }) {
   const today = toDayKey();
+  const epoch = useEpoch();
   const { notify } = useNotify();
-  const [days, setDays] = useState<DayKey[]>([]);
-  const [checkin, setCheckin] = useState<CheckIn | null>(null);
-  const [photoUrls, setPhotoUrls] = useState<Partial<Record<Angle, string>>>({});
+
+  // Live: a nudge, or a photo posted from another device, shows up by itself.
+  const loggedDays = useQuery(api.checkins.loggedDays);
+  const mine = useQuery(api.checkins.mine, { day: today, epoch });
+  const nudgers = useQuery(api.feed.nudgesForMe, { day: today }) ?? [];
+  const squads = useQuery(api.pods.list);
+  const setTrainedMutation = useMutation(api.checkins.setTrained);
+  const setNoteMutation = useMutation(api.checkins.setNote);
+  const uploadPhoto = useUploadPhoto();
+
+  const days: DayKey[] = loggedDays ?? [];
+  const loaded = loggedDays !== undefined && mine !== undefined;
+  const checkin = mine?.checkin ?? null;
+  const photoUrls: Partial<Record<Angle, string>> = {};
+  for (const p of mine?.photos ?? []) photoUrls[p.angle] = p.url;
+
   const [note, setNote] = useState('');
+  const serverNote = checkin?.note ?? '';
+  useEffect(() => setNote(serverNote), [serverNote]);
+
   const [busyAngles, setBusyAngles] = useState<Set<Angle>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  const [nudgers, setNudgers] = useState<string[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [booth, setBooth] = useState<Angle[] | null>(null);
   const [celebration, setCelebration] = useState<CelebrationInfo | null>(null);
 
-  // Whether today already had a photo, and whether this session already
-  // celebrated it - the reward plays once, for the first photo of the day.
-  const hadPhotos = useRef(false);
+  // The reward plays once, for the first photo of the day, in this session.
   const celebrated = useRef<DayKey | null>(null);
-
-  const load = useCallback(async () => {
-    const [logged, mine, nudges] = await Promise.all([
-      myLoggedDays(),
-      myCheckin(today),
-      nudgesForMe(today).catch(() => []),
-    ]);
-    setNudgers(nudges.map((n) => n.name));
-    setDays(logged);
-    setCheckin(mine?.checkin ?? null);
-    setNote(mine?.checkin.note ?? '');
-    hadPhotos.current = !!mine && mine.photos.length > 0;
-    if (mine && mine.photos.length) {
-      const urls = await signPhotoUrls(mine.photos.map((p) => p.storage_path));
-      const next: Partial<Record<Angle, string>> = {};
-      for (const p of mine.photos) {
-        const u = urls.get(p.storage_path);
-        if (u) next[p.angle] = u;
-      }
-      setPhotoUrls(next);
-    } else {
-      setPhotoUrls({});
-    }
-    setLoaded(true);
-    return logged;
-  }, [today]);
-
-  // Refresh quietly whenever the tab is shown; existing state keeps
-  // rendering meanwhile, so the switch never blanks.
-  useEffect(() => {
-    if (!active) return;
-    void load().catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [active, load]);
 
   const streak = computeStreak(days, today);
   const taken = ANGLES.filter((a) => photoUrls[a]);
   const missing = ANGLES.filter((a) => !photoUrls[a]);
   const hasPhotosToday = taken.length > 0;
-
-  // A nudge should land while the tab is open, not on the next visit.
-  useEffect(() => {
-    const channel = supabase
-      .channel('my-nudges')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nudges' }, () => {
-        void load().catch(() => {});
-      })
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [load]);
 
   // Hidden capture input: where the in-page camera is unavailable, the booth
   // falls back to the phone's own camera app, one angle at a time.
@@ -140,25 +95,21 @@ export default function TodayView({ active, boothRequest }: { active: boolean; b
 
   const onPick = async (angle: Angle, file: Blob | undefined) => {
     if (!file) return;
-    const first = !hadPhotos.current && celebrated.current !== today;
+    const first = loaded && !hasPhotosToday && !days.includes(today) && celebrated.current !== today;
     if (first) celebrated.current = today;
     setBusyAngles((s) => new Set(s).add(angle));
     setError(null);
     try {
       await uploadPhoto(today, angle, file);
-      const logged = await load();
       play('develop');
       if (first) {
-        const s = computeStreak(logged, today);
-        const squads = await listPods()
-          .then((p) => p.length)
-          .catch(() => 0);
-        setCelebration({ streak: s.current, best: s.best, squads });
+        const s = computeStreak([...days, today], today);
+        setCelebration({ streak: s.current, best: s.best, squads: squads?.length ?? 0 });
       }
     } catch (e) {
       if (first) celebrated.current = null;
-      setError(e instanceof Error ? e.message : 'Upload failed.');
-      notify({ kind: 'info', title: 'That photo did not upload', body: 'Check your connection and try again.', ephemeral: true });
+      setError(errorText(e, 'Upload failed.'));
+      notify({ kind: 'info', title: 'That photo did not upload', body: 'Check your connection and try again.' });
     } finally {
       setBusyAngles((s) => {
         const next = new Set(s);
@@ -170,17 +121,17 @@ export default function TodayView({ active, boothRequest }: { active: boolean; b
 
   const setTrained = async (v: boolean) => {
     feedback('toggle');
-    const c = checkin ?? (await ensureCheckin(today));
-    await updateCheckin(c.id, { trained: v });
-    await load();
+    await setTrainedMutation({ day: today, trained: v }).catch((e) => setError(errorText(e)));
   };
 
   const saveNote = async () => {
-    const c = checkin ?? (await ensureCheckin(today));
-    await updateCheckin(c.id, { note: note.trim() ? note : null });
-    await load();
-    notify({ kind: 'info', title: 'Note saved', body: 'Your squad sees it under your photos.', ephemeral: true, silent: true });
-    feedback('keep');
+    try {
+      await setNoteMutation({ day: today, note: note.trim() ? note : null });
+      notify({ kind: 'info', title: 'Note saved', body: 'Your squad sees it under your photos.', silent: true });
+      feedback('keep');
+    } catch (e) {
+      setError(errorText(e));
+    }
   };
 
   const hour = new Date().getHours();
@@ -329,7 +280,7 @@ export default function TodayView({ active, boothRequest }: { active: boolean; b
           <button
             className="btn-secondary"
             style={{ fontSize: 14, padding: '9px 20px' }}
-            disabled={(checkin?.note ?? '') === (note.trim() ? note : '')}
+            disabled={serverNote === note.trim()}
             onClick={() => void saveNote()}
           >
             Save note
@@ -509,7 +460,6 @@ function BoothModal({
   const [countdown, setCountdown] = useState<number | null>(null);
   const [delay, setDelay] = useState<0 | 3 | 5 | 10>(3);
   const [error, setError] = useState<string | null>(null);
-  const [ghost, setGhost] = useState<{ url: string; day: DayKey } | null>(null);
   const [ghostOpacity, setGhostOpacity] = useState(0.4);
   const [review, setReview] = useState<{ blob: Blob; url: string } | null>(null);
   const [flash, setFlash] = useState(0);
@@ -519,22 +469,11 @@ function BoothModal({
 
   // Ghost overlay: the most recent shot at this angle from a previous day,
   // laid over the live preview so today's photo lines up with the last one.
-  useEffect(() => {
-    let cancelled = false;
-    setGhost(null);
-    const today = toDayKey();
-    void (async () => {
-      const rows = await myTimeline(angle);
-      const prev = rows.filter((r) => r.day < today).pop();
-      if (!prev) return;
-      const urls = await signPhotoUrls([prev.path]);
-      const url = urls.get(prev.path);
-      if (url && !cancelled) setGhost({ url, day: prev.day });
-    })().catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [angle]);
+  const epoch = useEpoch();
+  const history = useQuery(api.checkins.timeline, { angle, epoch });
+  const todayKey = toDayKey();
+  const prev = history?.filter((r) => r.day < todayKey).pop();
+  const ghost = prev ? { url: prev.url, day: prev.day } : null;
 
   useEffect(() => {
     let cancelled = false;

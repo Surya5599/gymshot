@@ -1,11 +1,23 @@
+import { useAuthActions } from '@convex-dev/auth/react';
 import { Camera } from 'lucide-react';
 import React, { useState } from 'react';
 
-import { supabase } from '../lib/supabase';
-
 type Mode = 'signin' | 'signup';
 
+/** Convex Auth reports failures as codes; say them in the app's voice. */
+function friendly(e: unknown, mode: Mode): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/InvalidAccountId|InvalidSecret|Invalid credentials/i.test(raw)) {
+    return mode === 'signin' ? 'That email and password do not match.' : 'Could not create that account.';
+  }
+  if (/already exists/i.test(raw)) return 'That email already has an account. Sign in instead.';
+  if (/TooManyFailedAttempts|rate/i.test(raw)) return 'Too many tries. Wait a minute and try again.';
+  if (/password/i.test(raw) && /8|length|short/i.test(raw)) return 'Passwords need at least 8 characters.';
+  return 'Something went wrong. Try again.';
+}
+
 export default function AuthView() {
+  const { signIn } = useAuthActions();
   const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -13,26 +25,16 @@ export default function AuthView() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const valid = /\S+@\S+\.\S+/.test(email.trim()) && password.length >= 6;
+  const valid = /\S+@\S+\.\S+/.test(email.trim()) && password.length >= 8;
 
   const submit = async () => {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
-        if (error) throw error;
-        if (!data.session) {
-          setNotice('Check your email for a confirmation link, then sign in.');
-          setMode('signin');
-        }
-      }
+      await signIn('password', { email: email.trim().toLowerCase(), password, flow: mode === 'signin' ? 'signIn' : 'signUp' });
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong. Try again.');
+      setError(friendly(e, mode));
     } finally {
       setBusy(false);
     }
@@ -66,7 +68,7 @@ export default function AuthView() {
         type="password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        placeholder="Password (6+ characters)"
+        placeholder="Password (8+ characters)"
         autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && valid && !busy) void submit();

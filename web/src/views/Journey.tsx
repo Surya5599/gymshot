@@ -1,34 +1,32 @@
 import { Clapperboard, ImageDown, Pause, Play, Video, X } from 'lucide-react';
+import { useQuery } from 'convex/react';
 import React, { useEffect, useRef, useState } from 'react';
 
+import { api } from '../../convex/_generated/api';
 import { ProUpsell, Segmented } from '../components';
-import { ANGLES, isPro, myTimeline, signPhotoUrls, type Angle, type Profile } from '../lib/api';
+import { ANGLES, isPro, useEpoch, type Angle, type Profile } from '../lib/api';
 import { formatDay, fromDayKey, monthName, type DayKey } from '../lib/date';
 
-type Frame = { day: DayKey; path: string; url: string | null };
+type Frame = { day: DayKey; url: string | null };
 
 export default function JourneyView({ active, me }: { active: boolean; me: Profile }) {
   const [angle, setAngle] = useState<Angle>('front');
+  const epoch = useEpoch();
+  // Only ever my own history; the server has no way to serve anyone else's.
+  const timeline = useQuery(api.checkins.timeline, active ? { angle, epoch } : 'skip');
   const [frames, setFrames] = useState<Frame[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [wantsPro, setWantsPro] = useState(false);
   const [playing, setPlaying] = useState(false);
 
+  // Keep the last result while the tab is hidden ('skip'), so switching
+  // back never blanks.
   useEffect(() => {
-    if (!active) return;
-    let cancelled = false;
-    void (async () => {
-      const rows = await myTimeline(angle);
-      const urls = await signPhotoUrls(rows.map((r) => r.path));
-      if (cancelled) return;
-      setFrames(rows.map((r) => ({ ...r, url: urls.get(r.path) ?? null })));
-      setLoaded(true);
-    })().catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [angle, active]);
+    if (timeline === undefined) return;
+    setFrames(timeline);
+    setLoaded(true);
+  }, [timeline]);
 
   const byMonth = new Map<string, Frame[]>();
   for (const f of frames) {
@@ -110,7 +108,7 @@ export default function JourneyView({ active, me }: { active: boolean; me: Profi
           <div className="photo-grid">
             {monthFrames.map((f) =>
               f.url ? (
-                <div key={f.path + f.day} style={{ position: 'relative' }}>
+                <div key={f.day} style={{ position: 'relative' }}>
                   <img src={f.url} alt={f.day} loading="lazy" decoding="async" />
                   <span
                     style={{

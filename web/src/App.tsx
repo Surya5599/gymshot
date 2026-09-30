@@ -1,22 +1,15 @@
-import type { Session } from '@supabase/supabase-js';
+import { useConvexAuth, useMutation, useQuery } from 'convex/react';
 import { Bell, BellOff, CalendarDays, Camera, Images, UserRound, Users, X } from 'lucide-react';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-import {
-  checkinOwner,
-  getProfile,
-  myCheckin,
-  myLoggedDays,
-  profileName,
-  updateProfile,
-  type Profile,
-} from './lib/api';
+import { api } from '../convex/_generated/api';
+import { errorText, type Profile } from './lib/api';
+import { convex } from './lib/convex';
 import { toDayKey } from './lib/date';
 import { getPrefs, usePrefs } from './lib/prefs';
 import { enablePush } from './lib/push';
 import { feedback } from './lib/sfx';
 import { computeStreak } from './lib/streak';
-import { supabase } from './lib/supabase';
 import {
   ago,
   NoticeIcon,
@@ -40,27 +33,9 @@ function initialTab(): Tab {
 }
 
 export default function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const { isLoading, isAuthenticated } = useConvexAuth();
+  const profile = useQuery(api.users.me, isAuthenticated ? {} : 'skip');
   const [tab, setTab] = useState<Tab>(initialTab);
-
-  useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setAuthReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, next) => setSession(next));
-    return () => sub.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!session) {
-      setProfile(null);
-      return;
-    }
-    void getProfile().then(setProfile).catch(console.error);
-  }, [session]);
 
   // A tapped system notification brings the app forward on its tab.
   useEffect(() => {
@@ -72,41 +47,25 @@ export default function App() {
     return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
   }, []);
 
-  if (!authReady) return null;
-  if (!session) return <AuthView />;
-  if (!profile) return <p className="notice" style={{ marginTop: 60, textAlign: 'center' }}>Loading...</p>;
-  if (!profile.display_name.trim()) {
-    return <NameGate onDone={(p) => setProfile(p)} />;
-  }
+  if (isLoading) return null;
+  if (!isAuthenticated) return <AuthView />;
+  if (profile === undefined) return <p className="notice" style={{ marginTop: 60, textAlign: 'center' }}>Loading...</p>;
+  // Signed in but the account is gone (deleted elsewhere): back to sign-in.
+  if (profile === null) return <AuthView />;
+  if (!profile.displayName.trim()) return <NameGate />;
 
   return (
-    <NotificationProvider userId={profile.id} onNavigate={setTab}>
-      <Shell
-        me={profile}
-        tab={tab}
-        setTab={setTab}
-        onProfileChanged={() => void getProfile().then(setProfile).catch(console.error)}
-      />
+    <NotificationProvider onNavigate={setTab}>
+      <Shell me={profile} tab={tab} setTab={setTab} />
     </NotificationProvider>
   );
 }
 
-function Shell({
-  me,
-  tab,
-  setTab,
-  onProfileChanged,
-}: {
-  me: Profile;
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  onProfileChanged: () => void;
-}) {
+function Shell({ me, tab, setTab }: { me: Profile; tab: Tab; setTab: (t: Tab) => void }) {
   const [inboxOpen, setInboxOpen] = useState(false);
   // Bumped by the shutter button; Today opens the booth when it changes.
   const [boothRequest, setBoothRequest] = useState(0);
 
-  useLiveActivity(me);
   useDailyReminder();
   usePushSync();
 
@@ -143,7 +102,7 @@ function Shell({
         <JourneyView active={tab === 'journey'} me={me} />
       </div>
       <div className="tab-pane" hidden={tab !== 'you'}>
-        <YouView me={me} active={tab === 'you'} onProfileChanged={onProfileChanged} />
+        <YouView me={me} active={tab === 'you'} />
       </div>
 
       <TabBar
@@ -351,91 +310,31 @@ function InboxSheet({ onClose, onNavigate }: { onClose: () => void; onNavigate: 
 
 /* ------------------------------------------------------- activity sources */
 
-/**
- * Squad activity, announced as it happens. RLS scopes realtime rows to what
- * I can already see, so this hears exactly my squads and nothing wider.
- */
-function useLiveActivity(me: Profile) {
-  const { notify } = useNotify();
-
-  useEffect(() => {
-    const today = () => toDayKey();
-    const channel = supabase
-      .channel('activity')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'checkins' }, (p) => {
-        const row = p.new as { user_id: string; day: string };
-        if (row.user_id === me.id || row.day !== today()) return;
-        void profileName(row.user_id).then((name) =>
-          notify({
-            kind: 'post',
-            title: `${name} just checked in`,
-            body: 'Their photos are in the squad thread.',
-            tab: 'pods',
-            key: `post-${row.user_id}-${row.day}`,
-          })
-        );
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, (p) => {
-        if (p.eventType === 'DELETE') return;
-        const row = p.new as { checkin_id: string; user_id: string; emoji: string };
-        if (row.user_id === me.id) return;
-        void (async () => {
-          if ((await checkinOwner(row.checkin_id)) !== me.id) return;
-          const name = await profileName(row.user_id);
-          notify({
-            kind: 'reaction',
-            emoji: row.emoji,
-            title: `${name} reacted to your check-in`,
-            tab: 'pods',
-            key: `react-${row.checkin_id}-${row.user_id}`,
-          });
-        })().catch(() => {});
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'nudges' }, (p) => {
-        const row = p.new as { from_user: string; to_user: string; day: string };
-        if (row.to_user !== me.id || row.day !== today()) return;
-        void profileName(row.from_user).then((name) =>
-          notify({
-            kind: 'nudge',
-            title: `${name} nudged you`,
-            body: "Where's today's photo? Your squad is waiting.",
-            tab: 'today',
-            key: `nudge-${row.from_user}-${row.day}`,
-          })
-        );
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'pod_join_requests' }, (p) => {
-        const row = p.new as { user_id: string };
-        if (row.user_id === me.id) return;
-        notify({ kind: 'join', title: 'New join request', body: 'Someone wants into your squad.', tab: 'pods' });
-      })
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [me.id, notify]);
-}
+// Squad activity (posts, reactions, nudges, join requests) is written to the
+// inbox by the server as it happens (convex/lib/announce.ts); the
+// notification provider turns new rows into toasts. Nothing to listen for
+// here.
 
 const REMINDED_KEY = 'gymshot.reminded';
 
 /**
- * The daily nudge from the app itself, at the time chosen in You. It is a
- * timer in the open page, so it fires while GymShot is open or in a
- * background tab - not after the browser has closed it.
+ * The reminder, for browsers without web push: a timer in the open page,
+ * so it fires while GymShot is open or in a background tab. With push on,
+ * the server sends it at this device's time instead (convex/push.ts).
  */
 function useDailyReminder() {
   const { notify } = useNotify();
-  const { reminder, reminderAt } = usePrefs();
+  const { reminder, reminderAt, push } = usePrefs();
 
   useEffect(() => {
-    if (!reminder) return;
+    if (!reminder || push) return;
     let timer: number | undefined;
 
     const fire = async () => {
       const day = toDayKey();
       if (localStorage.getItem(REMINDED_KEY) === day) return;
-      const [mine, days] = await Promise.all([myCheckin(day), myLoggedDays()]);
-      if (mine && mine.photos.length > 0) return;
+      const days = await convex.query(api.checkins.loggedDays, {});
+      if (days.includes(day)) return;
       localStorage.setItem(REMINDED_KEY, day);
       const s = computeStreak(days, day);
       notify({
@@ -444,7 +343,7 @@ function useDailyReminder() {
         title: s.current > 0 ? `Your ${s.current}-day streak is on the line` : "Time for today's photo",
         body: s.current > 0 ? 'Post before midnight to keep it alive.' : 'Three angles, thirty seconds. Your squad is watching.',
         tab: 'today',
-        key: `reminder-${day}`,
+        system: true,
       });
     };
 
@@ -461,7 +360,7 @@ function useDailyReminder() {
 
     arm();
     return () => window.clearTimeout(timer);
-  }, [reminder, reminderAt, notify]);
+  }, [reminder, reminderAt, push, notify]);
 }
 
 /**
@@ -482,16 +381,21 @@ function usePushSync() {
 
 /* -------------------------------------------------------------- name gate */
 
-/** First sign-in on web: the pod needs a name for you before anything else. */
-function NameGate({ onDone }: { onDone: (p: Profile) => void }) {
+/** First sign-in: the squad needs a name for you before anything else. */
+function NameGate() {
+  const updateProfile = useMutation(api.users.updateProfile);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
     setBusy(true);
+    setError(null);
     try {
-      await updateProfile({ display_name: name.trim() });
-      onDone(await getProfile());
+      // The profile query is live, so the app moves on by itself.
+      await updateProfile({ displayName: name.trim() });
+    } catch (e) {
+      setError(errorText(e));
     } finally {
       setBusy(false);
     }
@@ -508,6 +412,7 @@ function NameGate({ onDone }: { onDone: (p: Profile) => void }) {
         placeholder="Your name"
         maxLength={28}
       />
+      {error ? <p className="error" style={{ marginTop: 8 }}>{error}</p> : null}
       <button
         className="btn-primary"
         style={{ marginTop: 18, width: '100%' }}

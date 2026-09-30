@@ -1,4 +1,5 @@
-import type { Session } from '@supabase/supabase-js';
+import { useAuthActions } from '@convex-dev/auth/react';
+import { useConvexAuth, useMutation, useQuery } from 'convex/react';
 import { useSQLiteContext } from 'expo-sqlite';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -9,17 +10,20 @@ import { loadDemoPod, removeDemoData } from '@/lib/demo';
 import { healthProvider, syncRecentHealth } from '@/lib/health';
 import { deleteStoredPhoto, storeCheckInPhoto } from '@/lib/photos';
 import { configureBilling } from '@/lib/purchases';
-import { pushDisplayName, supabase } from '@/lib/supabase';
+import { api } from '../../web/convex/_generated/api';
 import { cancelDailyReminder, requestReminderPermission, scheduleDailyReminder } from '@/lib/reminders';
 import { computeStreak, StreakInfo } from '@/lib/streak';
 
 type Store = {
   ready: boolean;
-  /** Supabase auth session; null while signed out. Valid once `authReady`. */
-  session: Session | null;
+  /** Signed in to the GymShot account (Convex Auth). Valid once `authReady`. */
+  signedIn: boolean;
+  /** The signed-in account's email, once loaded. */
+  accountEmail: string | null;
   authReady: boolean;
-  /** Active GymShot Pro until this instant; written only by the billing webhook. */
-  proUntil: string | null;
+  /** Active GymShot Pro until this instant (ms); written only by the billing
+   *  webhook. Live: it updates by itself when a purchase lands. */
+  proUntil: number | null;
   refreshPro: () => Promise<void>;
   me: User | null;
   settings: Settings;
@@ -99,9 +103,12 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const db = useSQLiteContext();
 
   const [ready, setReady] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [proUntil, setProUntil] = useState<string | null>(null);
+  const { isLoading: authLoading, isAuthenticated: signedIn } = useConvexAuth();
+  const authReady = !authLoading;
+  const authActions = useAuthActions();
+  const account = useQuery(api.users.me, signedIn ? {} : 'skip');
+  const updateRemoteProfile = useMutation(api.users.updateProfile);
+  const proUntil = signedIn ? (account?.proUntil ?? null) : null;
   const [me, setMe] = useState<User | null>(null);
   // Actions read the profile through this ref, not the `me` state. signUp()
   // creates the row and refreshes, but a handler that calls signUp() and then
@@ -166,65 +173,46 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setAuthReady(true);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-    });
-    return () => sub.subscription.unsubscribe();
-  }, []);
+  // The profile query is live, so Pro unlocks the moment the webhook lands;
+  // this stays for callers that want to wait on it explicitly.
+  const refreshPro = useCallback(async () => {}, []);
 
-  const refreshPro = useCallback(async () => {
-    const { data } = await supabase.auth.getSession();
-    const userId = data.session?.user.id;
-    if (!userId) {
-      setProUntil(null);
-      return;
-    }
-    const { data: row } = await supabase.from('profiles').select('pro_until').eq('id', userId).single();
-    setProUntil((row?.pro_until as string | null) ?? null);
-  }, []);
-
+  const accountId = account?.id ?? null;
   useEffect(() => {
-    if (!session) {
-      setProUntil(null);
-      return;
-    }
-    configureBilling(session.user.id);
-    refreshPro().catch(() => {});
-  }, [session, refreshPro]);
+    if (accountId) configureBilling(accountId);
+  }, [accountId]);
 
   /* --------------------------------------------------------------- actions */
 
-  const signUpWithEmail = useCallback(async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-    return data.session != null;
-  }, []);
+  const signUpWithEmail = useCallback(
+    async (email: string, password: string) => {
+      await authActions.signIn('password', { email: email.trim().toLowerCase(), password, flow: 'signUp' });
+      return true;
+    },
+    [authActions]
+  );
 
-  const signInWithEmail = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-  }, []);
+  const signInWithEmail = useCallback(
+    async (email: string, password: string) => {
+      await authActions.signIn('password', { email: email.trim().toLowerCase(), password, flow: 'signIn' });
+    },
+    [authActions]
+  );
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  }, []);
+    await authActions.signOut();
+  }, [authActions]);
 
   const signUp = useCallback(
     async (name: string) => {
       await q.createMe(db, name.trim() || 'Me');
       await q.writeSetting(db, 'onboarded', 1);
-      // Mirror the name to the remote profile; local-first, so a failure
-      // here must never block onboarding.
-      pushDisplayName(name.trim() || 'Me').catch(() => {});
+      // Mirror the name to the account; local-first, so a failure here must
+      // never block onboarding.
+      updateRemoteProfile({ displayName: (name.trim() || 'Me').slice(0, 28) }).catch(() => {});
       await refresh();
     },
-    [db, refresh]
+    [db, refresh, updateRemoteProfile]
   );
 
   const setSetting = useCallback(
@@ -420,7 +408,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
   const value = useMemo<Store>(
     () => ({
       ready,
-      session,
+      signedIn,
+      accountEmail: account?.email ?? null,
       authReady,
       proUntil,
       refreshPro,
@@ -461,7 +450,8 @@ export function AppStoreProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       ready,
-      session,
+      signedIn,
+      account,
       authReady,
       proUntil,
       refreshPro,

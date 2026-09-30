@@ -29,7 +29,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const {
     me,
-    session,
+    accountEmail,
     pods,
     settings,
     streak,
@@ -113,7 +113,7 @@ export default function SettingsScreen() {
       <Section title="Account" note="Signing out keeps everything on this device - photos, squads, and streak stay put.">
         <Row
           icon="mail-outline"
-          title={session?.user.email ?? 'Signed in'}
+          title={accountEmail ?? 'Signed in'}
           subtitle="GymShot account"
           right={
             <Button

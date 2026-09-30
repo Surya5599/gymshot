@@ -47,6 +47,68 @@ Neither gap is papered over in the UI.
 
 ---
 
+## Backend: Convex
+
+Accounts, squads, check-ins, photos, reactions, nudges, the activity inbox,
+web push, and Pro entitlement all live in one Convex deployment. The code
+is in `web/convex/`; both the web app and the Expo app talk to it. The Expo
+app stays local-first and only uses Convex for sign-in and the Pro flag.
+
+| Piece | Where |
+|---|---|
+| Schema (day keys, one check-in per person per day, 8-person squads) | `web/convex/schema.ts` |
+| Access rules - every function checks the caller, there is no RLS | `web/convex/lib/access.ts` |
+| Squads, join requests, approvals, free-tier limit | `web/convex/pods.ts` |
+| Check-ins, photo upload, the first photo as "the post" | `web/convex/checkins.ts` |
+| The live squad thread, reactions, nudges | `web/convex/feed.ts` |
+| Inbox + web push, one `announce()` for every event | `web/convex/lib/announce.ts`, `push.ts`, `pushNode.ts` |
+| Daily reminder, per device, at its local time | `web/convex/push.ts` + `crons.ts` |
+| Private photo links (signed, expire in 12-24h) | `web/convex/lib/photoUrl.ts`, `/photo` in `http.ts` |
+| RevenueCat webhook, account deletion | `http.ts`, `billing.ts`, `users.ts` |
+
+Queries are live: a squad-mate posting, reacting, or nudging updates every
+open screen by itself, and the server-written inbox becomes toasts, the bell
+count, and web pushes.
+
+Tests: `cd web && npm test` runs the backend suite (`web/tests/`) against
+convex-test - access control, squad cap and free tier, posting and
+announcements, the thread's privacy rules, streaks, reminders, photo-link
+forgery and expiry, the billing webhook, and account deletion.
+
+### One-time setup
+
+```bash
+cd web
+npx convex dev                 # log in, create the project; writes .env.local
+npx @convex-dev/auth           # sign-in keys + SITE_URL for the dev deployment
+npx convex env set PHOTO_URL_SECRET "$(openssl rand -hex 32)"
+```
+
+Production is the same with `--prod`:
+
+```bash
+npx @convex-dev/auth --prod
+npx convex env set --prod PHOTO_URL_SECRET "$(openssl rand -hex 32)"
+```
+
+Then:
+
+- **Netlify**: add `CONVEX_DEPLOY_KEY` (Convex dashboard -> Settings ->
+  Deploy keys -> production). `netlify.toml` runs `convex deploy`, which
+  pushes the functions and builds the site against them.
+- **Expo / EAS**: set `EXPO_PUBLIC_CONVEX_URL` to the production
+  `https://<name>.convex.cloud` URL (`.env` locally, see `.env.example`).
+- **Web push** (optional): `npx web-push generate-vapid-keys`, then set
+  `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT`
+  (`mailto:you@...`) on the deployment. No client change - the app reads
+  the public key from the deployment. Without them, notifications stay
+  in-app.
+- **RevenueCat** (optional): point the webhook at
+  `https://<name>.convex.site/revenuecat`, with Authorization
+  `Bearer <REVENUECAT_WEBHOOK_AUTH>`, and set that secret on the deployment.
+
+---
+
 ## Decisions taken on the spec's open questions
 
 The spec left six questions open. Building required answers; these are the ones

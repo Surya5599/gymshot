@@ -1,15 +1,17 @@
+import { useMutation, useQuery } from 'convex/react';
 import { AtSign, BellRing, Camera, Flame, Heart, Info, UserPlus } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
+import { api } from '../convex/_generated/api';
 import { getPrefs, setPrefs } from './lib/prefs';
-import { disablePush, enablePush, pushSupported } from './lib/push';
+import { disablePush, enablePush, pushAvailable } from './lib/push';
 import { feedback, type Cue } from './lib/sfx';
 
 /**
  * One notification system with four outlets, so every event is announced
  * the same way wherever it comes from:
  *   - a toast that slides in at the top while the app is in front,
- *   - the inbox behind the header bell (today's activity, kept per device),
+ *   - the inbox behind the header bell (kept on the server, same everywhere),
  *   - a system notification when the tab is in the background,
  *   - the installed app's icon badge.
  */
@@ -30,11 +32,9 @@ export type Notice = {
 };
 
 type NewNotice = Omit<Notice, 'id' | 'at' | 'read'> & {
-  /** Only announce, do not keep in the inbox (e.g. "Nudge sent"). */
-  ephemeral?: boolean;
-  /** Collapse duplicates: a newer notice with the same key replaces the old. */
-  key?: string;
   silent?: boolean;
+  /** Also show a system notification if the tab is hidden. */
+  system?: boolean;
 };
 
 type Ctx = {
@@ -62,43 +62,39 @@ const CUE: Record<NoticeKind, Cue> = {
   info: 'tap',
 };
 
-const INBOX_LIMIT = 40;
-const INBOX_MAX_AGE = 3 * 24 * 60 * 60 * 1000;
-
-function loadInbox(key: string): Notice[] {
-  try {
-    const raw = localStorage.getItem(key);
-    const list = raw ? (JSON.parse(raw) as Notice[]) : [];
-    return list.filter((n) => Date.now() - n.at < INBOX_MAX_AGE);
-  } catch {
-    return [];
-  }
-}
-
 type Toast = Notice & { leaving?: boolean };
 
-export function NotificationProvider({
-  userId,
-  onNavigate,
-  children,
-}: {
-  userId: string;
-  onNavigate: (tab: Tab) => void;
-  children: React.ReactNode;
-}) {
-  const storageKey = `gymshot.inbox.${userId}`;
-  const [inbox, setInbox] = useState<Notice[]>(() => loadInbox(storageKey));
+/**
+ * The inbox lives on the server (convex/notifications.ts), so it is the same
+ * on every device and fills in live. This provider watches it: anything new
+ * that arrives while the app is open becomes a toast with its sound; while
+ * the tab is hidden, a system notification - unless web push is on, in
+ * which case the push already covered it.
+ *
+ * notify() is for client-only moments ("Nudged Jules", "Note saved"): a
+ * toast, never an inbox row.
+ */
+export function NotificationProvider({ onNavigate, children }: { onNavigate: (tab: Tab) => void; children: React.ReactNode }) {
+  const rows = useQuery(api.notifications.list);
+  const markAllReadMutation = useMutation(api.notifications.markAllRead);
+  const clearMutation = useMutation(api.notifications.clear);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const keyed = useRef(new Map<string, string>());
+  const seen = useRef<Set<string> | null>(null);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(inbox));
-    } catch {
-      // Storage full or blocked; the inbox still works for this session.
-    }
-  }, [inbox, storageKey]);
-
+  const inbox = useMemo<Notice[]>(
+    () =>
+      (rows ?? []).map((n) => ({
+        id: n.id,
+        kind: n.kind,
+        title: n.title,
+        body: n.body,
+        emoji: n.emoji,
+        tab: n.tab,
+        at: n.at,
+        read: n.read,
+      })),
+    [rows]
+  );
   const unread = inbox.filter((n) => !n.read).length;
 
   // The installed app's icon carries the unread count (Badging API).
@@ -113,29 +109,43 @@ export function NotificationProvider({
     window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 260);
   }, []);
 
-  const notify = useCallback(
-    (n: NewNotice) => {
-      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
-      const notice: Notice = { id, kind: n.kind, title: n.title, body: n.body, emoji: n.emoji, tab: n.tab, at: Date.now(), read: false };
-      const hidden = document.visibilityState === 'hidden';
-
-      if (!n.ephemeral) {
-        const replaces = n.key ? keyed.current.get(n.key) : undefined;
-        if (n.key) keyed.current.set(n.key, id);
-        setInbox((list) => [notice, ...list.filter((x) => x.id !== replaces)].slice(0, INBOX_LIMIT));
-      }
-
-      if (hidden) {
-        // With web push on, the server sends this one; showing it here too
-        // would notify twice.
-        if (!n.ephemeral && !getPrefs().push) void showSystemNotification(notice);
+  const show = useCallback(
+    (notice: Notice, opts: { silent?: boolean; system?: boolean } = {}) => {
+      if (document.visibilityState === 'hidden') {
+        if (opts.system && !getPrefs().push) void showSystemNotification(notice);
         return;
       }
-      if (!n.silent) feedback(CUE[n.kind]);
+      if (!opts.silent) feedback(CUE[notice.kind]);
       setToasts((t) => [...t.slice(-2), notice]);
-      window.setTimeout(() => dismiss(id), 4200);
+      window.setTimeout(() => dismiss(notice.id), 4200);
     },
     [dismiss]
+  );
+
+  // Announce server notices that are new since the app opened. The first
+  // load only sets the baseline - opening the app is not an event.
+  useEffect(() => {
+    if (!rows) return;
+    if (seen.current === null) {
+      seen.current = new Set(rows.map((n) => n.id));
+      return;
+    }
+    for (const n of [...inbox].reverse()) {
+      if (seen.current.has(n.id)) continue;
+      seen.current.add(n.id);
+      if (!n.read) show(n, { system: true });
+    }
+  }, [rows, inbox, show]);
+
+  const notify = useCallback(
+    (n: NewNotice) => {
+      const id = `local-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+      show(
+        { id, kind: n.kind, title: n.title, body: n.body, emoji: n.emoji, tab: n.tab, at: Date.now(), read: true },
+        { silent: n.silent, system: n.system }
+      );
+    },
+    [show]
   );
 
   const value = useMemo<Ctx>(
@@ -143,10 +153,10 @@ export function NotificationProvider({
       notify,
       inbox,
       unread,
-      markAllRead: () => setInbox((l) => l.map((n) => (n.read ? n : { ...n, read: true }))),
-      clearInbox: () => setInbox([]),
+      markAllRead: () => void markAllReadMutation().catch(() => {}),
+      clearInbox: () => void clearMutation().catch(() => {}),
     }),
-    [notify, inbox, unread]
+    [notify, inbox, unread, markAllReadMutation, clearMutation]
   );
 
   return (
@@ -159,7 +169,6 @@ export function NotificationProvider({
             className={`toast${t.leaving ? ' leaving' : ''}`}
             onClick={() => {
               if (t.tab) onNavigate(t.tab);
-              setInbox((l) => l.map((n) => (n.id === t.id ? { ...n, read: true } : n)));
               dismiss(t.id);
             }}
           >
@@ -224,7 +233,7 @@ export async function turnOnNotifications(): Promise<SystemNotifyState> {
   const state = await requestSystemNotifications();
   if (state !== 'granted') return state;
   setPrefs({ notifications: true });
-  if (pushSupported()) await enablePush().catch((e) => console.error('push subscribe failed', e));
+  if (await pushAvailable()) await enablePush().catch((e) => console.error('push subscribe failed', e));
   return state;
 }
 

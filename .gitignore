@@ -30,3 +30,6 @@ expo-env.d.ts
 # AI tooling, installed locally per machine
 .agents/
 .claude/skills/
+
+# Local env (the Convex URL for Expo dev)
+.env

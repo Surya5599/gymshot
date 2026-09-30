@@ -1,12 +1,14 @@
 import { Purchases } from '@revenuecat/purchases-js';
 
-import { getProfile, isPro } from './api';
+import { api } from '../../convex/_generated/api';
+import { isPro } from './api';
+import { convex } from './convex';
 
 /**
  * RevenueCat Web Billing (Stripe underneath). Paste the Web Billing public
  * key (rcb_...) from RevenueCat -> Project settings -> API keys to switch the
  * upsell from "coming soon" to a live checkout. Entitlement lands via the
- * revenuecat-webhook edge function writing profiles.pro_until.
+ * /revenuecat HTTP route in convex/http.ts writing users.proUntil.
  */
 // NEVER put a Stripe key here, especially not a secret (sk_...) key - this
 // file ships in the public JS bundle. Only the RevenueCat Web Billing public
@@ -37,7 +39,7 @@ export async function purchasePro(userId: string, plan: ProPlan): Promise<void> 
 export async function waitForPro(timeoutMs = 20000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const profile = await getProfile().catch(() => null);
+    const profile = await convex.query(api.users.me, {}).catch(() => null);
     if (isPro(profile)) return true;
     await new Promise((r) => setTimeout(r, 2000));
   }

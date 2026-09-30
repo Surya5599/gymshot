@@ -1,21 +1,16 @@
 import { BellRing, ExternalLink, LogOut, Sparkles, Trash2, Volume2 } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useAuthActions } from '@convex-dev/auth/react';
+import { useMutation, useQuery } from 'convex/react';
+import React, { useEffect, useState } from 'react';
+
+import { api } from '../../convex/_generated/api';
 
 import { Avatar, ProUpsell, Toggle } from '../components';
-import {
-  deleteAccount,
-  isPro,
-  leavePod,
-  listPods,
-  updateProfile,
-  type Pod,
-  type Profile,
-} from '../lib/api';
+import { errorText, isPro, type Profile } from '../lib/api';
 import { getManagementUrl } from '../lib/billing';
 import { setPrefs, usePrefs } from '../lib/prefs';
 import { feedback, play } from '../lib/sfx';
-import { supabase } from '../lib/supabase';
-import { forgetPushOnSignOut, pushSupported } from '../lib/push';
+import { forgetPushOnSignOut, pushAvailable } from '../lib/push';
 import {
   sendTestNotification,
   systemNotifyState,
@@ -25,35 +20,21 @@ import {
   type SystemNotifyState,
 } from '../notify';
 
-export default function YouView({
-  me,
-  active,
-  onProfileChanged,
-}: {
-  me: Profile;
-  active: boolean;
-  onProfileChanged: () => void;
-}) {
-  const [pods, setPods] = useState<(Pod & { memberCount: number })[]>([]);
-  const [name, setName] = useState(me.display_name);
-  const [email, setEmail] = useState<string | null>(null);
+export default function YouView({ me }: { me: Profile; active: boolean }) {
+  const pods = useQuery(api.pods.list) ?? [];
+  const updateProfile = useMutation(api.users.updateProfile);
+  const leavePod = useMutation(api.pods.leave);
+  const deleteAccount = useMutation(api.users.deleteAccount);
+  const { signOut } = useAuthActions();
+  const [name, setName] = useState(me.displayName);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setPods(await listPods());
-    const { data } = await supabase.auth.getUser();
-    setEmail(data.user?.email ?? null);
-  }, []);
-
-  useEffect(() => {
-    if (!active) return;
-    void load().catch(console.error);
-  }, [active, load]);
-
-  const patch = async (fields: Parameters<typeof updateProfile>[0]) => {
-    await updateProfile(fields);
-    onProfileChanged();
+  // The profile is live, so every toggle and rename shows up everywhere.
+  const patch = async (fields: { displayName?: string; shareTrained?: boolean; blurFace?: boolean }) => {
+    setError(null);
+    await updateProfile(fields).catch((e) => setError(errorText(e)));
   };
 
   return (
@@ -67,21 +48,21 @@ export default function YouView({
 
       <div className="card">
         <div className="row">
-          <Avatar id={me.id} name={me.display_name} size={48} />
+          <Avatar id={me.id} name={me.displayName} size={48} />
           <div style={{ flex: 1 }}>
-            <strong>{me.display_name}</strong>
-            <p className="caption">{email ?? ''}</p>
+            <strong>{me.displayName}</strong>
+            <p className="caption">{me.email ?? ''}</p>
           </div>
         </div>
         <div className="row" style={{ marginTop: 14 }}>
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={28} aria-label="Display name" />
           <button
             className="btn-secondary"
-            disabled={name.trim().length < 2 || name.trim() === me.display_name || busy === 'name'}
+            disabled={name.trim().length < 2 || name.trim() === me.displayName || busy === 'name'}
             onClick={async () => {
               setBusy('name');
               try {
-                await patch({ display_name: name.trim() });
+                await patch({ displayName: name.trim() });
               } finally {
                 setBusy(null);
               }
@@ -103,16 +84,18 @@ export default function YouView({
             <strong>Blur my face</strong>
             <p className="caption">Applied on every photo your squads see</p>
           </div>
-          <Toggle on={me.blur_face} onChange={(v) => void patch({ blur_face: v })} />
+          <Toggle on={me.blurFace} onChange={(v) => void patch({ blurFace: v })} />
         </div>
         <div className="row" style={{ justifyContent: 'space-between', marginTop: 14 }}>
           <div>
             <strong>Share "trained today"</strong>
             <p className="caption">The toggle and your note</p>
           </div>
-          <Toggle on={me.share_trained} onChange={(v) => void patch({ share_trained: v })} />
+          <Toggle on={me.shareTrained} onChange={(v) => void patch({ shareTrained: v })} />
         </div>
       </div>
+
+      {error ? <p className="error" role="alert">{error}</p> : null}
 
       <AlertsCard />
 
@@ -125,7 +108,7 @@ export default function YouView({
             <div style={{ flex: 1 }}>
               <strong>GymShot Pro</strong>
               <p className="caption">
-                Active until {me.pro_until ? new Date(me.pro_until).toLocaleDateString() : ''}
+                Active until {me.proUntil ? new Date(me.proUntil).toLocaleDateString() : ''}
               </p>
             </div>
             <button
@@ -149,7 +132,7 @@ export default function YouView({
         <div className="card">
           <p className="eyebrow">Squads</p>
           {pods.map((p) => (
-            <div key={p.id} className="row" style={{ marginTop: 12 }}>
+            <div key={p._id} className="row" style={{ marginTop: 12 }}>
               <span style={{ fontSize: 20 }}>{p.emoji}</span>
               <div style={{ flex: 1 }}>
                 <strong>{p.name}</strong>
@@ -163,8 +146,7 @@ export default function YouView({
                 onClick={async () => {
                   if (!window.confirm(`Leave ${p.name}? Your check-ins stay yours; the squad stops seeing them.`))
                     return;
-                  await leavePod(p.id);
-                  await load();
+                  await leavePod({ podId: p._id }).catch((e) => setError(errorText(e)));
                 }}
               >
                 Leave
@@ -183,7 +165,7 @@ export default function YouView({
             // Before signing out: the device must stop getting this
             // account's pushes, and deleting the row needs the session.
             await forgetPushOnSignOut();
-            await supabase.auth.signOut();
+            await signOut();
           }}
         >
           <LogOut size={15} /> Sign out
@@ -209,9 +191,11 @@ export default function YouView({
                 onClick={async () => {
                   setBusy('delete');
                   try {
+                    await forgetPushOnSignOut();
                     await deleteAccount();
+                    await signOut();
                   } catch (e) {
-                    window.alert(e instanceof Error ? e.message : 'Could not delete the account.');
+                    window.alert(errorText(e, 'Could not delete the account.'));
                     setBusy(null);
                   }
                 }}
@@ -244,6 +228,10 @@ function AlertsCard() {
   const { notify } = useNotify();
   const [permission, setPermission] = useState<SystemNotifyState>(systemNotifyState);
   const canVibrate = typeof navigator !== 'undefined' && 'vibrate' in navigator;
+  const [pushReady, setPushReady] = useState(false);
+  useEffect(() => {
+    void pushAvailable().then(setPushReady);
+  }, []);
   const systemOn = prefs.notifications && permission === 'granted';
 
   const toggleSystem = async (on: boolean) => {
@@ -306,7 +294,7 @@ function AlertsCard() {
           <div>
             <strong>System notifications</strong>
             <p className="caption">
-              {pushSupported()
+              {pushReady
                 ? 'Posts, reactions, nudges, and your reminder - even with GymShot closed'
                 : 'Posts, reactions, and nudges while GymShot is in the background'}
             </p>
@@ -354,7 +342,6 @@ function AlertsCard() {
             emoji: '\u{1F525}',
             title: 'This is what a reaction looks like',
             body: 'Tap a toast to jump to where it happened.',
-            ephemeral: true,
           })
         }
       >

@@ -10,6 +10,17 @@ import { useTheme } from '@/theme';
 
 type Mode = 'signin' | 'signup';
 
+/** Convex Auth reports failures as codes; say them in the app's voice. */
+function friendlyAuthError(e: unknown, mode: 'signin' | 'signup'): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  if (/InvalidAccountId|InvalidSecret|Invalid credentials/i.test(raw)) {
+    return mode === 'signin' ? 'That email and password do not match.' : 'Could not create that account.';
+  }
+  if (/already exists/i.test(raw)) return 'That email already has an account. Sign in instead.';
+  if (/TooManyFailedAttempts|rate/i.test(raw)) return 'Too many tries. Wait a minute and try again.';
+  return 'Something went wrong. Try again.';
+}
+
 /** Email + password gate in front of onboarding. Session persists on-device,
  *  so this only appears once per install (or after signing out). */
 export default function Auth() {
@@ -24,7 +35,7 @@ export default function Auth() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const valid = /\S+@\S+\.\S+/.test(email.trim()) && password.length >= 6;
+  const valid = /\S+@\S+\.\S+/.test(email.trim()) && password.length >= 8;
 
   const submit = async () => {
     setBusy(true);
@@ -44,7 +55,7 @@ export default function Auth() {
         }
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong. Try again.');
+      setError(friendlyAuthError(e, mode));
     } finally {
       setBusy(false);
     }
@@ -105,7 +116,7 @@ export default function Auth() {
         <TextInput
           value={password}
           onChangeText={setPassword}
-          placeholder="Password (6+ characters)"
+          placeholder="Password (8+ characters)"
           placeholderTextColor={t.colors.inkFaint}
           autoCapitalize="none"
           secureTextEntry

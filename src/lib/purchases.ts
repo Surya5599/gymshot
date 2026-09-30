@@ -6,8 +6,9 @@ import { Platform } from 'react-native';
  * export degrades gracefully.
  *
  * To go live: paste the platform public API keys from RevenueCat ->
- * Project settings -> API keys. Purchases write profiles.pro_until through
- * the revenuecat-webhook edge function; the app never grants Pro itself.
+ * Project settings -> API keys. Purchases write users.proUntil through the
+ * /revenuecat route in web/convex/http.ts; the app never grants Pro itself.
+ * appUserID is the Convex user id, which is what that route expects.
  */
 const RC_IOS_KEY = ''; // appl_...
 const RC_ANDROID_KEY = ''; // goog_...

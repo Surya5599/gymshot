@@ -8,7 +8,7 @@ import { useTheme } from '@/theme';
 /** Boot gate: waits for the database and the auth session, then routes to
  *  sign-in, onboarding, or the app. */
 export default function Index() {
-  const { ready, authReady, session, me } = useStore();
+  const { ready, authReady, signedIn, me } = useStore();
   const t = useTheme();
 
   if (!ready || !authReady) {
@@ -19,6 +19,6 @@ export default function Index() {
     );
   }
 
-  if (!session) return <Redirect href="/auth" />;
+  if (!signedIn) return <Redirect href="/auth" />;
   return <Redirect href={me ? '/(tabs)/today' : '/onboarding'} />;
 }

@@ -1,7 +1,9 @@
+import { ConvexAuthProvider } from '@convex-dev/auth/react';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 
 import App from './App';
+import { convex } from './lib/convex';
 import { installAudioUnlock } from './lib/sfx';
 import './theme.css';
 
@@ -15,6 +17,8 @@ if ('serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ConvexAuthProvider client={convex}>
+      <App />
+    </ConvexAuthProvider>
   </React.StrictMode>
 );

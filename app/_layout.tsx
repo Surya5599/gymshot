@@ -5,6 +5,7 @@ import {
   Nunito_800ExtraBold,
   useFonts,
 } from '@expo-google-fonts/nunito';
+import { ConvexAuthProvider } from '@convex-dev/auth/react';
 import { Stack } from 'expo-router';
 import { SQLiteProvider } from 'expo-sqlite';
 import * as SplashScreen from 'expo-splash-screen';
@@ -15,6 +16,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { DATABASE_NAME, migrate } from '@/db/schema';
+import { convex, tokenStorage } from '@/lib/convex';
 import { AppStoreProvider } from '@/state/AppStore';
 import { ThemeProvider, useTheme } from '@/theme';
 
@@ -38,11 +40,13 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrate}>
-            <AppStoreProvider>
-              <Chrome />
-            </AppStoreProvider>
-          </SQLiteProvider>
+          <ConvexAuthProvider client={convex} storage={tokenStorage}>
+            <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrate}>
+              <AppStoreProvider>
+                <Chrome />
+              </AppStoreProvider>
+            </SQLiteProvider>
+          </ConvexAuthProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

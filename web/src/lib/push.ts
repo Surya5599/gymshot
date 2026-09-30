@@ -1,30 +1,32 @@
+import { api } from '../../convex/_generated/api';
+import { convex } from './convex';
+import { toDayKey } from './date';
 import { getPrefs, setPrefs } from './prefs';
-import { supabase } from './supabase';
 
 /**
  * Web push: notifications that arrive with the app closed. Each opted-in
- * browser registers one push subscription; the push-dispatch edge function
- * sends to it when a squad-mate posts, reacts, or nudges, and at the daily
- * reminder time.
+ * browser registers one subscription with Convex (convex/push.ts); the
+ * server pushes to it when a squad-mate posts, reacts, or nudges, and at
+ * the device's daily reminder time.
  *
- * Paste the VAPID *public* key here to switch it on (see supabase/README.md).
- * The private key belongs only in the edge function's secrets - never here,
- * this file ships in the public bundle.
+ * The VAPID public key is read from the deployment (VAPID_PUBLIC_KEY in the
+ * Convex environment), so turning push on is purely server config.
  */
-const VAPID_PUBLIC_KEY = '';
 
-export function pushConfigured(): boolean {
-  return VAPID_PUBLIC_KEY.length > 0;
+let vapidKey: string | null | undefined;
+
+async function publicKey(): Promise<string | null> {
+  if (vapidKey === undefined) vapidKey = await convex.query(api.push.publicKey, {}).catch(() => null);
+  return vapidKey;
 }
 
-export function pushSupported(): boolean {
-  return (
-    pushConfigured() &&
-    typeof window !== 'undefined' &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window &&
-    'Notification' in window
-  );
+function platformSupportsPush(): boolean {
+  return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+}
+
+/** True when this browser can do push and the deployment has keys. */
+export async function pushAvailable(): Promise<boolean> {
+  return platformSupportsPush() && !!(await publicKey());
 }
 
 function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
@@ -35,38 +37,37 @@ function keyBytes(base64url: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-function deviceFields() {
-  const p = getPrefs();
-  return {
-    reminder_on: p.reminder,
-    reminder_at: p.reminderAt,
-    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-  };
+/** The next local reminder moment and the local day it belongs to. */
+export function nextReminder(reminderAt: string, now = new Date()): { at: number; day: string } {
+  const [h, m] = reminderAt.split(':').map(Number);
+  const d = new Date(now);
+  d.setHours(h || 0, m || 0, 0, 0);
+  if (d.getTime() <= now.getTime()) d.setDate(d.getDate() + 1);
+  return { at: d.getTime(), day: toDayKey(d) };
 }
 
-/** Subscribe this browser and store the subscription for the dispatcher.
- *  Idempotent: also how the reminder time, time zone, and a rotated
- *  endpoint reach the server. Needs notification permission granted. */
+/** Subscribe this browser and register it. Idempotent: also how the reminder
+ *  time and a rotated endpoint reach the server. Needs permission granted. */
 export async function enablePush(): Promise<boolean> {
-  if (!pushSupported() || Notification.permission !== 'granted') return false;
+  const key = await publicKey();
+  if (!key || !platformSupportsPush() || Notification.permission !== 'granted') return false;
   const reg = await navigator.serviceWorker.ready;
   const sub =
     (await reg.pushManager.getSubscription()) ??
-    (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(VAPID_PUBLIC_KEY) }));
+    (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) }));
   const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
   if (!json.endpoint || !json.keys?.p256dh || !json.keys.auth) return false;
 
-  const { error } = await supabase.from('push_subscriptions').upsert(
-    {
-      endpoint: json.endpoint,
-      p256dh: json.keys.p256dh,
-      auth: json.keys.auth,
-      ...deviceFields(),
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'endpoint' }
-  );
-  if (error) throw error;
+  const prefs = getPrefs();
+  const next = nextReminder(prefs.reminderAt);
+  await convex.mutation(api.push.subscribe, {
+    endpoint: json.endpoint,
+    p256dh: json.keys.p256dh,
+    auth: json.keys.auth,
+    reminderOn: prefs.reminder,
+    nextReminderAt: prefs.reminder ? next.at : undefined,
+    nextReminderDay: prefs.reminder ? next.day : undefined,
+  });
   setPrefs({ push: true });
   return true;
 }
@@ -78,11 +79,11 @@ export async function disablePush(): Promise<void> {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();
   if (!sub) return;
-  await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+  await convex.mutation(api.push.unsubscribe, { endpoint: sub.endpoint }).catch(() => {});
   await sub.unsubscribe().catch(() => {});
 }
 
-/** On sign-out the device must stop receiving that account's pushes. */
+/** Before sign-out, while the session can still delete the registration. */
 export async function forgetPushOnSignOut(): Promise<void> {
   await disablePush().catch(() => {});
 }

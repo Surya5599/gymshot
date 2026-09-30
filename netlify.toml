@@ -3,7 +3,10 @@
 
 [build]
   base = "web"
-  command = "npm run build"
+  # Pushes the Convex functions first, then builds the site against that
+  # deployment (convex deploy sets VITE_CONVEX_URL for the build command).
+  # Needs CONVEX_DEPLOY_KEY in the Netlify environment.
+  command = "npx convex deploy --cmd 'npm run build'"
   publish = "dist"
 
 [build.environment]

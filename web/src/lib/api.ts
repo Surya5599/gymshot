@@ -1,5 +1,15 @@
+import { useMutation } from 'convex/react';
+import { useCallback, useEffect, useState } from 'react';
+
+import { api } from '../../convex/_generated/api';
+import type { Id } from '../../convex/_generated/dataModel';
 import type { DayKey } from './date';
-import { supabase } from './supabase';
+
+/**
+ * Client-side shapes and the few helpers that are not a plain useQuery.
+ * Everything else reads straight from Convex with useQuery, which is live:
+ * a squad-mate posting, reacting, or nudging updates the screen by itself.
+ */
 
 export const ANGLES = ['front', 'side', 'back'] as const;
 export type Angle = (typeof ANGLES)[number];
@@ -7,212 +17,41 @@ export type Angle = (typeof ANGLES)[number];
 export const REACTIONS = ['\u{1F525}', '\u{1F44F}', '\u{1F4AA}', '\u{1F440}', '\u{1F60D}'] as const;
 
 export type Profile = {
-  id: string;
-  display_name: string;
-  share_trained: boolean;
-  blur_face: boolean;
-  /** Active GymShot Pro until this instant; null = never subscribed. */
-  pro_until: string | null;
+  id: Id<'users'>;
+  email: string | null;
+  displayName: string;
+  shareTrained: boolean;
+  blurFace: boolean;
+  /** Pro until this instant (ms); null = never subscribed. */
+  proUntil: number | null;
 };
 
-/** Pro entitlement is written only by the billing webhook, never the client. */
-export function isPro(p: Profile | null): boolean {
-  return !!p?.pro_until && new Date(p.pro_until).getTime() > Date.now();
+export function isPro(p: Pick<Profile, 'proUntil'> | null | undefined): boolean {
+  return !!p?.proUntil && p.proUntil > Date.now();
 }
 
-export type Pod = {
-  id: string;
-  name: string;
-  emoji: string;
-  invite_code: string;
-  created_by: string;
-  created_at: string;
-};
+/* ------------------------------------------------------------ photo links */
 
-export type CheckIn = {
-  id: string;
-  user_id: string;
-  day: DayKey;
-  trained: boolean;
-  note: string | null;
-  created_at: string;
-};
+const EPOCH_MS = 12 * 60 * 60 * 1000;
+const epochNow = () => Math.floor(Date.now() / EPOCH_MS);
 
-export type CheckinPhoto = {
-  id: string;
-  checkin_id: string;
-  angle: Angle;
-  storage_path: string;
-  width: number | null;
-  height: number | null;
-};
-
-export type Reaction = {
-  checkin_id: string;
-  user_id: string;
-  emoji: string;
-};
-
-export type FeedEntry = {
-  checkin: CheckIn;
-  author: Profile;
-  photos: (CheckinPhoto & { url: string | null })[];
-  reactions: Reaction[];
-};
-
-function fail(message: string): never {
-  throw new Error(message);
+/**
+ * The 12-hour bucket photo links are minted for (see convex/lib/photoUrl.ts).
+ * Stable within a bucket, so image URLs - and the browser's image cache -
+ * stay stable; ticking over re-runs the queries and mints fresh links
+ * before the old ones expire.
+ */
+export function useEpoch(): number {
+  const [epoch, setEpoch] = useState(epochNow);
+  useEffect(() => {
+    const msLeft = (epoch + 1) * EPOCH_MS - Date.now();
+    const t = window.setTimeout(() => setEpoch(epochNow()), Math.max(1000, msLeft + 1000));
+    return () => window.clearTimeout(t);
+  }, [epoch]);
+  return epoch;
 }
 
-/* -------------------------------------------------------------- profile */
-
-export async function getProfile(): Promise<Profile> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', uid).single();
-  if (error) throw error;
-  return data as Profile;
-}
-
-export async function updateProfile(patch: Partial<Omit<Profile, 'id'>>): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { error } = await supabase.from('profiles').update(patch).eq('id', uid);
-  if (error) throw error;
-}
-
-/* ----------------------------------------------------------------- pods */
-
-export async function listPods(): Promise<(Pod & { memberCount: number })[]> {
-  const { data, error } = await supabase
-    .from('pods')
-    .select('*, pod_members(count)')
-    .order('created_at');
-  if (error) throw error;
-  return (data ?? []).map((p) => ({
-    ...(p as unknown as Pod),
-    memberCount: (p as { pod_members: { count: number }[] }).pod_members?.[0]?.count ?? 0,
-  }));
-}
-
-export async function createPod(name: string, emoji: string): Promise<Pod> {
-  const { data, error } = await supabase.rpc('create_pod', { p_name: name, p_emoji: emoji });
-  if (error) throw error;
-  return data as Pod;
-}
-
-/** Asks to join; membership only happens once the squad owner approves. */
-export async function requestJoinByCode(code: string): Promise<Pod> {
-  const { data, error } = await supabase.rpc('request_join_by_code', { p_code: code });
-  if (error) throw error;
-  return data as Pod;
-}
-
-export type MyJoinRequest = { pod_id: string; name: string; emoji: string; requested_at: string };
-
-export async function myJoinRequests(): Promise<MyJoinRequest[]> {
-  const { data, error } = await supabase.rpc('my_join_requests');
-  if (error) throw error;
-  return (data ?? []) as MyJoinRequest[];
-}
-
-export type IncomingJoinRequest = {
-  pod_id: string;
-  pod_name: string;
-  pod_emoji: string;
-  user_id: string;
-  display_name: string;
-  requested_at: string;
-};
-
-/** Requests waiting on me, across every squad I own. */
-export async function incomingJoinRequests(): Promise<IncomingJoinRequest[]> {
-  const { data, error } = await supabase.rpc('incoming_join_requests');
-  if (error) throw error;
-  return (data ?? []) as IncomingJoinRequest[];
-}
-
-export async function approveJoinRequest(podId: string, userId: string): Promise<void> {
-  const { error } = await supabase.rpc('approve_join_request', { p_pod: podId, p_user: userId });
-  if (error) throw error;
-}
-
-export async function declineJoinRequest(podId: string, userId: string): Promise<void> {
-  const { error } = await supabase.rpc('decline_join_request', { p_pod: podId, p_user: userId });
-  if (error) throw error;
-}
-
-export async function cancelJoinRequest(podId: string): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { error } = await supabase.from('pod_join_requests').delete().eq('pod_id', podId).eq('user_id', uid);
-  if (error) throw error;
-}
-
-export async function leavePod(podId: string): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { error } = await supabase.from('pod_members').delete().eq('pod_id', podId).eq('user_id', uid);
-  if (error) throw error;
-}
-
-export async function podMembers(podId: string): Promise<Profile[]> {
-  const { data, error } = await supabase
-    .from('pod_members')
-    .select('profiles(*)')
-    .eq('pod_id', podId)
-    .order('joined_at');
-  if (error) throw error;
-  return (data ?? []).map((r) => (r as unknown as { profiles: Profile }).profiles);
-}
-
-/* ------------------------------------------------------------- checkins */
-
-export async function myLoggedDays(): Promise<DayKey[]> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { data, error } = await supabase
-    .from('checkins')
-    .select('day')
-    .eq('user_id', uid)
-    .order('day', { ascending: false });
-  if (error) throw error;
-  return (data ?? []).map((r) => r.day as DayKey);
-}
-
-export async function myCheckin(day: DayKey): Promise<{ checkin: CheckIn; photos: CheckinPhoto[] } | null> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { data, error } = await supabase
-    .from('checkins')
-    .select('*, checkin_photos(*)')
-    .eq('user_id', uid)
-    .eq('day', day)
-    .maybeSingle();
-  if (error) throw error;
-  if (!data) return null;
-  const { checkin_photos, ...checkin } = data as CheckIn & { checkin_photos: CheckinPhoto[] };
-  return { checkin: checkin as CheckIn, photos: checkin_photos ?? [] };
-}
-
-export async function ensureCheckin(day: DayKey): Promise<CheckIn> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { data, error } = await supabase
-    .from('checkins')
-    .upsert({ user_id: uid, day }, { onConflict: 'user_id,day' })
-    .select()
-    .single();
-  if (error) throw error;
-  return data as CheckIn;
-}
-
-export async function updateCheckin(id: string, patch: { trained?: boolean; note?: string | null }): Promise<void> {
-  const { error } = await supabase.from('checkins').update(patch).eq('id', id);
-  if (error) throw error;
-}
-
-/* --------------------------------------------------------------- photos */
+/* ----------------------------------------------------------------- upload */
 
 /** Downscale to keep uploads phone-photo sized, not camera-raw sized. */
 async function resizeToJpeg(file: Blob, maxDim = 1440): Promise<{ blob: Blob; width: number; height: number }> {
@@ -229,220 +68,26 @@ async function resizeToJpeg(file: Blob, maxDim = 1440): Promise<{ blob: Blob; wi
   return { blob, width, height };
 }
 
-export async function uploadPhoto(day: DayKey, angle: Angle, file: Blob): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const checkin = await ensureCheckin(day);
-  const { blob, width, height } = await resizeToJpeg(file);
-  const path = `${uid}/${day}-${angle}.jpg`;
-
-  const { error: upErr } = await supabase.storage.from('checkins').upload(path, blob, {
-    contentType: 'image/jpeg',
-    upsert: true,
-  });
-  if (upErr) throw upErr;
-  // A retake reuses the path; the next sign must mint a fresh URL so the
-  // browser does not serve the old image from cache.
-  invalidateSignedUrl(path);
-
-  const { error } = await supabase
-    .from('checkin_photos')
-    .upsert({ checkin_id: checkin.id, angle, storage_path: path, width, height }, { onConflict: 'checkin_id,angle' });
-  if (error) throw error;
+/** Resize, upload straight to Convex storage, then attach to the day. */
+export function useUploadPhoto(): (day: DayKey, angle: Angle, file: Blob) => Promise<void> {
+  const generateUploadUrl = useMutation(api.checkins.generateUploadUrl);
+  const savePhoto = useMutation(api.checkins.savePhoto);
+  return useCallback(
+    async (day, angle, file) => {
+      const { blob, width, height } = await resizeToJpeg(file);
+      const uploadUrl = await generateUploadUrl();
+      const res = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      if (!res.ok) throw new Error('Upload failed. Check your connection and try again.');
+      const { storageId } = (await res.json()) as { storageId: Id<'_storage'> };
+      await savePhoto({ day, angle, storageId, width, height });
+    },
+    [generateUploadUrl, savePhoto]
+  );
 }
 
-/**
- * Session cache for signed URLs. Re-signing on every view mount produced a
- * different URL each time, which defeats the browser's image cache and makes
- * every tab switch re-download every photo. A stable URL makes repeat views
- * instant. Entries expire an hour before the signature does.
- */
-const SIGN_TTL_SECONDS = 60 * 60 * 24;
-const urlCache = new Map<string, { url: string; expires: number }>();
-
-function invalidateSignedUrl(path: string): void {
-  urlCache.delete(path);
-}
-
-export async function signPhotoUrls(paths: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  const now = Date.now();
-  const missing: string[] = [];
-  for (const p of new Set(paths)) {
-    const hit = urlCache.get(p);
-    if (hit && hit.expires > now) out.set(p, hit.url);
-    else missing.push(p);
-  }
-  if (missing.length > 0) {
-    const { data, error } = await supabase.storage.from('checkins').createSignedUrls(missing, SIGN_TTL_SECONDS);
-    if (error) throw error;
-    for (const item of data ?? []) {
-      if (item.signedUrl && item.path) {
-        out.set(item.path, item.signedUrl);
-        urlCache.set(item.path, { url: item.signedUrl, expires: now + (SIGN_TTL_SECONDS - 3600) * 1000 });
-      }
-    }
-  }
-  return out;
-}
-
-/** My whole photo timeline, oldest first, for the Journey view. */
-export async function myTimeline(angle: Angle): Promise<{ day: DayKey; path: string }[]> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { data, error } = await supabase
-    .from('checkin_photos')
-    .select('storage_path, checkins!inner(day, user_id)')
-    .eq('angle', angle)
-    .eq('checkins.user_id', uid);
-  if (error) throw error;
-  return (data ?? [])
-    .map((r) => {
-      const row = r as unknown as { storage_path: string; checkins: { day: DayKey } };
-      return { day: row.checkins.day, path: row.storage_path };
-    })
-    .sort((a, b) => (a.day < b.day ? -1 : 1));
-}
-
-/* ----------------------------------------------------------------- feed */
-
-/** Today's thread for one pod: who posted (with photos + reactions), who has not. */
-export async function podFeed(
-  podId: string,
-  day: DayKey
-): Promise<{ entries: FeedEntry[]; waiting: Profile[]; members: Profile[] }> {
-  const members = await podMembers(podId);
-  const ids = members.map((m) => m.id);
-
-  const { data, error } = await supabase
-    .from('checkins')
-    .select('*, checkin_photos(*), reactions(*)')
-    .in('user_id', ids)
-    .eq('day', day)
-    .order('created_at');
-  if (error) throw error;
-
-  const rows = (data ?? []) as (CheckIn & { checkin_photos: CheckinPhoto[]; reactions: Reaction[] })[];
-  const urls = await signPhotoUrls(rows.flatMap((r) => r.checkin_photos.map((p) => p.storage_path)));
-
-  const entries: FeedEntry[] = rows.map((r) => {
-    const { checkin_photos, reactions, ...checkin } = r;
-    return {
-      checkin: checkin as CheckIn,
-      author: members.find((m) => m.id === r.user_id)!,
-      photos: checkin_photos
-        .sort((a, b) => ANGLES.indexOf(a.angle) - ANGLES.indexOf(b.angle))
-        .map((p) => ({ ...p, url: urls.get(p.storage_path) ?? null })),
-      reactions: reactions ?? [],
-    };
-  });
-
-  const posted = new Set(rows.map((r) => r.user_id));
-  return { entries, waiting: members.filter((m) => !posted.has(m.id)), members };
-}
-
-/** Current streak per member. Only the counts leave the server; history
- *  stays private. */
-export async function squadStreaks(podId: string): Promise<Map<string, number>> {
-  const { data, error } = await supabase.rpc('squad_streaks', { p_pod: podId });
-  if (error) throw error;
-  return new Map(((data ?? []) as { user_id: string; streak: number }[]).map((r) => [r.user_id, r.streak]));
-}
-
-/** Permanently deletes the account, owned squads, and every photo. */
-export async function deleteAccount(): Promise<void> {
-  const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' });
-  if (error) throw error;
-  await supabase.auth.signOut();
-}
-
-/* --------------------------------------------------------------- nudges */
-
-export type Nudge = { pod_id: string; from_user: string; to_user: string; day: DayKey };
-
-/** Poke a squad-mate to post. Once per person per day; duplicates no-op. */
-export async function nudge(podId: string, toUser: string, day: DayKey): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { error } = await supabase
-    .from('nudges')
-    .upsert({ pod_id: podId, from_user: uid, to_user: toUser, day }, { onConflict: 'pod_id,from_user,to_user,day', ignoreDuplicates: true });
-  if (error) throw error;
-}
-
-/** Who nudged me today, with names resolved via squad-mate profile access. */
-export async function nudgesForMe(day: DayKey): Promise<{ from: string; name: string }[]> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { data, error } = await supabase
-    .from('nudges')
-    .select('from_user, profiles!nudges_from_user_fkey(display_name)')
-    .eq('to_user', uid)
-    .eq('day', day);
-  if (error) throw error;
-  const seen = new Set<string>();
-  const out: { from: string; name: string }[] = [];
-  for (const r of (data ?? []) as unknown as { from_user: string; profiles: { display_name: string } | null }[]) {
-    if (seen.has(r.from_user)) continue;
-    seen.add(r.from_user);
-    out.push({ from: r.from_user, name: r.profiles?.display_name ?? 'A squad-mate' });
-  }
-  return out;
-}
-
-/** Which members I already nudged today in this squad. */
-export async function myNudgesSent(podId: string, day: DayKey): Promise<Set<string>> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { data, error } = await supabase
-    .from('nudges')
-    .select('to_user')
-    .eq('pod_id', podId)
-    .eq('from_user', uid)
-    .eq('day', day);
-  if (error) throw error;
-  return new Set((data ?? []).map((r) => r.to_user as string));
-}
-
-/** One reaction per person per check-in; same emoji again removes it. */
-export async function toggleReaction(checkinId: string, emoji: string): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id ?? fail('not signed in');
-  const { data } = await supabase
-    .from('reactions')
-    .select('emoji')
-    .eq('checkin_id', checkinId)
-    .eq('user_id', uid)
-    .maybeSingle();
-
-  if (data?.emoji === emoji) {
-    const { error } = await supabase.from('reactions').delete().eq('checkin_id', checkinId).eq('user_id', uid);
-    if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from('reactions')
-      .upsert({ checkin_id: checkinId, user_id: uid, emoji }, { onConflict: 'checkin_id,user_id' });
-    if (error) throw error;
-  }
-}
-
-/* ------------------------------------------------------------- activity */
-
-const nameCache = new Map<string, string>();
-
-/** A squad-mate's display name, for announcing their activity. RLS only
- *  exposes profiles of people who share a squad with me. */
-export async function profileName(userId: string): Promise<string> {
-  const hit = nameCache.get(userId);
-  if (hit) return hit;
-  const { data } = await supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle();
-  const name = (data?.display_name as string | undefined)?.trim() || 'A squad-mate';
-  nameCache.set(userId, name);
-  return name;
-}
-
-/** Who a check-in belongs to - to tell whether a reaction was to mine. */
-export async function checkinOwner(checkinId: string): Promise<string | null> {
-  const { data } = await supabase.from('checkins').select('user_id').eq('id', checkinId).maybeSingle();
-  return (data?.user_id as string | undefined) ?? null;
+/** Convex errors arrive wrapped ("[CONVEX M(...)] Uncaught Error: ..."). */
+export function errorText(e: unknown, fallback = 'Something went wrong. Try again.'): string {
+  const raw = e instanceof Error ? e.message : String(e ?? '');
+  const m = raw.match(/Uncaught (?:Error|AppError): (.*?)(?:\n|$)/);
+  return (m?.[1] ?? raw).trim() || fallback;
 }

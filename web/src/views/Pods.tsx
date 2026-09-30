@@ -1,57 +1,33 @@
 import { BellRing, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, Crown, Dumbbell, Flame, X } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useMutation, useQuery } from 'convex/react';
+import React, { useEffect, useState } from 'react';
 
+import { api } from '../../convex/_generated/api';
+import type { Id } from '../../convex/_generated/dataModel';
 import { Avatar, ProUpsell } from '../components';
 import { emojiBurst } from '../fx';
-import {
-  approveJoinRequest,
-  cancelJoinRequest,
-  createPod,
-  declineJoinRequest,
-  incomingJoinRequests,
-  listPods,
-  myJoinRequests,
-  myNudgesSent,
-  nudge,
-  podFeed,
-  REACTIONS,
-  squadStreaks,
-  requestJoinByCode,
-  isPro,
-  toggleReaction,
-  type FeedEntry,
-  type IncomingJoinRequest,
-  type MyJoinRequest,
-  type Pod,
-  type Profile,
-} from '../lib/api';
+import { errorText, isPro, REACTIONS, useEpoch, type Profile } from '../lib/api';
 import { toDayKey } from '../lib/date';
 import { feedback } from '../lib/sfx';
-import { supabase } from '../lib/supabase';
 import { useNotify } from '../notify';
 
 const POD_EMOJI = ['\u{1F3CB}\u{FE0F}', '\u{1F525}', '\u{1F962}', '\u{1F31F}', '\u{1F436}', '\u{1F3AF}'];
 
-export default function PodsView({ me, active }: { me: Profile; active: boolean }) {
-  const [pods, setPods] = useState<(Pod & { memberCount: number })[]>([]);
-  const [pending, setPending] = useState<MyJoinRequest[]>([]);
-  const [incoming, setIncoming] = useState<IncomingJoinRequest[]>([]);
-  const [open, setOpen] = useState<Pod | null>(null);
+type PodSummary = { _id: Id<'pods'>; name: string; emoji: string; inviteCode: string };
+
+export default function PodsView({ me }: { me: Profile; active: boolean }) {
+  // All live: a join request, an approval, or a new member shows up by itself.
+  const pods = useQuery(api.pods.list) ?? [];
+  const pending = useQuery(api.pods.myRequests) ?? [];
+  const incoming = useQuery(api.pods.incomingRequests) ?? [];
+  const approve = useMutation(api.pods.approve);
+  const decline = useMutation(api.pods.decline);
+  const cancelRequest = useMutation(api.pods.cancelRequest);
+  const [openId, setOpenId] = useState<Id<'pods'> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const open = pods.find((p) => p._id === openId) ?? null;
 
-  const load = useCallback(async () => {
-    const [p, mine, inc] = await Promise.all([listPods(), myJoinRequests(), incomingJoinRequests()]);
-    setPods(p);
-    setPending(mine);
-    setIncoming(inc);
-  }, []);
-
-  useEffect(() => {
-    if (!active) return;
-    void load().catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [active, load]);
-
-  if (open) return <PodThread pod={open} me={me} onBack={() => setOpen(null)} />;
+  if (open) return <PodThread pod={open} me={me} onBack={() => setOpenId(null)} />;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -64,7 +40,7 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
 
       {pods.map((p) => (
         <div
-          key={p.id}
+          key={p._id}
           className="card row squad-row stagger"
           style={{ cursor: 'pointer', '--i': pods.indexOf(p) } as React.CSSProperties}
           role="button"
@@ -72,12 +48,12 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
           aria-label={`Open squad ${p.name}`}
           onClick={() => {
             feedback('tap');
-            setOpen(p);
+            setOpenId(p._id);
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              setOpen(p);
+              setOpenId(p._id);
             }
           }}
         >
@@ -85,7 +61,7 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
           <div style={{ flex: 1 }}>
             <strong>{p.name}</strong>
             <p className="caption">
-              {p.memberCount} member{p.memberCount === 1 ? '' : 's'} - code {p.invite_code}
+              {p.memberCount} member{p.memberCount === 1 ? '' : 's'} - code {p.inviteCode}
             </p>
           </div>
           <ChevronRight size={18} style={{ color: 'var(--ink-faint)' }} />
@@ -99,21 +75,25 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
         <div className="card">
           <p className="eyebrow">Join requests</p>
           {incoming.map((r) => (
-            <div key={`${r.pod_id}-${r.user_id}`} className="row" style={{ marginTop: 12 }}>
-              <Avatar id={r.user_id} name={r.display_name} />
+            <div key={`${r.podId}-${r.userId}`} className="row" style={{ marginTop: 12 }}>
+              <Avatar id={r.userId} name={r.displayName} />
               <div style={{ flex: 1 }}>
-                <strong>{r.display_name}</strong>
+                <strong>{r.displayName}</strong>
                 <p className="caption">
-                  wants to join {r.pod_emoji} {r.pod_name}
+                  wants to join {r.podEmoji} {r.podName}
                 </p>
               </div>
               <button
                 className="btn-primary row"
                 style={{ padding: '7px 14px', fontSize: 13, gap: 5 }}
                 onClick={async () => {
-                  await approveJoinRequest(r.pod_id, r.user_id);
-                  feedback('keep');
-                  await load();
+                  setError(null);
+                  try {
+                    await approve({ podId: r.podId, userId: r.userId });
+                    feedback('keep');
+                  } catch (e) {
+                    setError(errorText(e));
+                  }
                 }}
               >
                 <Check size={14} /> Approve
@@ -123,10 +103,7 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
                 style={{ padding: 6 }}
                 title="Decline"
                 aria-label="Decline request"
-                onClick={async () => {
-                  await declineJoinRequest(r.pod_id, r.user_id);
-                  await load();
-                }}
+                onClick={() => void decline({ podId: r.podId, userId: r.userId }).catch((e) => setError(errorText(e)))}
               >
                 <X size={16} />
               </button>
@@ -140,7 +117,7 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
         <div className="card-flat">
           <p className="eyebrow">Waiting for approval</p>
           {pending.map((r) => (
-            <div key={r.pod_id} className="row" style={{ marginTop: 12 }}>
+            <div key={r.podId} className="row" style={{ marginTop: 12 }}>
               <Clock size={16} style={{ color: 'var(--ink-faint)' }} />
               <div style={{ flex: 1 }}>
                 <strong>
@@ -151,10 +128,7 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
               <button
                 className="btn-ghost"
                 style={{ padding: '6px 10px', fontSize: 13 }}
-                onClick={async () => {
-                  await cancelJoinRequest(r.pod_id);
-                  await load();
-                }}
+                onClick={() => void cancelRequest({ podId: r.podId })}
               >
                 Cancel
               </button>
@@ -168,15 +142,16 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
         <ProUpsell reason="You are in your free squad. More squads come with Pro." userId={me.id} />
       ) : (
         <>
-          <NewPod onDone={() => void load()} />
-          <JoinPod onDone={() => void load()} />
+          <NewPod />
+          <JoinPod />
         </>
       )}
     </div>
   );
 }
 
-function NewPod({ onDone }: { onDone: () => void }) {
+function NewPod() {
+  const createPod = useMutation(api.pods.create);
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState(POD_EMOJI[0]);
   const [busy, setBusy] = useState(false);
@@ -219,11 +194,11 @@ function NewPod({ onDone }: { onDone: () => void }) {
           setBusy(true);
           setError(null);
           try {
-            await createPod(name.trim(), emoji);
+            await createPod({ name: name.trim(), emoji });
             setName('');
-            onDone();
+            feedback('keep');
           } catch (e) {
-            setError(e instanceof Error ? e.message : 'Could not create the squad.');
+            setError(errorText(e, 'Could not create the squad.'));
           } finally {
             setBusy(false);
           }
@@ -235,7 +210,8 @@ function NewPod({ onDone }: { onDone: () => void }) {
   );
 }
 
-function JoinPod({ onDone }: { onDone: () => void }) {
+function JoinPod() {
+  const requestJoin = useMutation(api.pods.requestJoin);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -262,12 +238,11 @@ function JoinPod({ onDone }: { onDone: () => void }) {
           setError(null);
           setNotice(null);
           try {
-            const pod = await requestJoinByCode(code);
+            const pod = await requestJoin({ code });
             setCode('');
             setNotice(`Request sent. ${pod.name}'s owner has to approve you.`);
-            onDone();
           } catch (e) {
-            setError(e instanceof Error ? e.message : 'No squad with that code, or it is already full.');
+            setError(errorText(e, 'No squad with that code, or it is already full.'));
           } finally {
             setBusy(false);
           }
@@ -284,59 +259,34 @@ function JoinPod({ onDone }: { onDone: () => void }) {
 
 /* ------------------------------------------------------------- thread */
 
-function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => void }) {
+function PodThread({ pod, me, onBack }: { pod: PodSummary; me: Profile; onBack: () => void }) {
   const today = toDayKey();
-  const [entries, setEntries] = useState<FeedEntry[]>([]);
-  const [waiting, setWaiting] = useState<Profile[]>([]);
-  const [members, setMembers] = useState<Profile[]>([]);
-  const [streaks, setStreaks] = useState<Map<string, number>>(new Map());
-  const [nudged, setNudged] = useState<Set<string>>(new Set());
+  const epoch = useEpoch();
+  // One live query is the whole thread: posts, reactions, the waiting row,
+  // streaks, and my nudges all update as they happen.
+  const thread = useQuery(api.feed.thread, { podId: pod._id, day: today, epoch });
+  const toggleReaction = useMutation(api.feed.toggleReaction);
+  const nudgeMutation = useMutation(api.feed.nudge);
   const [copied, setCopied] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [justNudged, setJustNudged] = useState<Set<string>>(new Set());
   const { notify } = useNotify();
 
-  const load = useCallback(async () => {
-    const [feed, sent, str] = await Promise.all([
-      podFeed(pod.id, today),
-      myNudgesSent(pod.id, today),
-      squadStreaks(pod.id).catch(() => new Map<string, number>()),
-    ]);
-    setEntries(feed.entries);
-    setWaiting(feed.waiting);
-    setMembers(feed.members);
-    setStreaks(str);
-    setNudged(sent);
-    setLoaded(true);
-  }, [pod.id, today]);
-
+  // null: this squad is no longer mine (left, or closed) - step back out.
   useEffect(() => {
-    void load().catch(console.error);
-  }, [load]);
+    if (thread === null) onBack();
+  }, [thread, onBack]);
 
-  // Live thread: whenever a squad-visible row changes, refresh shortly after.
-  useEffect(() => {
-    let timer: number | undefined;
-    const refresh = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => void load().catch(() => {}), 400);
-    };
-    const channel = supabase
-      .channel(`pod-${pod.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkins' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'checkin_photos' }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reactions' }, refresh)
-      .subscribe();
-    return () => {
-      window.clearTimeout(timer);
-      void supabase.removeChannel(channel);
-    };
-  }, [pod.id, load]);
+  const loaded = thread !== undefined;
+  const entries = thread?.entries ?? [];
+  const waiting = thread?.waiting ?? [];
+  const members = thread?.members ?? [];
+  const nudged = new Set<string>([...(thread?.nudged ?? []), ...justNudged]);
+  const ownerId = thread?.pod.createdBy;
 
   const myEntry = entries.find((e) => e.author.id === me.id);
-  const postedAt = (iso: string) =>
-    new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const postedAt = (ms: number) => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -347,14 +297,14 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
         <span style={{ fontSize: 22 }}>{pod.emoji}</span>
         <div style={{ flex: 1 }}>
           <strong>{pod.name}</strong>
-          <p className="caption">invite code {pod.invite_code}</p>
+          <p className="caption">invite code {pod.inviteCode}</p>
         </div>
         <button
           className="btn-ghost row"
           style={{ padding: '6px 10px', fontSize: 13, gap: 5 }}
           aria-label="Copy invite code"
           onClick={async () => {
-            await navigator.clipboard.writeText(pod.invite_code).catch(() => {});
+            await navigator.clipboard.writeText(pod.inviteCode).catch(() => {});
             feedback('keep');
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1600);
@@ -379,7 +329,7 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
             <span className="row" style={{ gap: 0 }}>
               {members.slice(0, 6).map((m, i) => (
                 <span key={m.id} style={{ marginLeft: i === 0 ? 0 : -10 }}>
-                  <Avatar id={m.id} name={m.display_name} size={30} />
+                  <Avatar id={m.id} name={m.displayName} size={30} />
                 </span>
               ))}
             </span>
@@ -391,17 +341,17 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
           {showMembers
             ? members.map((m) => (
                 <div key={m.id} className="row member-in" style={{ marginTop: 10, paddingLeft: 4 }}>
-                  <Avatar id={m.id} name={m.display_name} size={30} />
+                  <Avatar id={m.id} name={m.displayName} size={30} />
                   <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>
-                    {m.display_name}
+                    {m.displayName}
                     {m.id === me.id ? ' (you)' : ''}
                   </span>
-                  {(streaks.get(m.id) ?? 0) > 0 ? (
+                  {m.streak > 0 ? (
                     <span className="caption row" style={{ gap: 3, color: 'var(--accent-ink)' }}>
-                      <Flame size={13} /> {streaks.get(m.id)}
+                      <Flame size={13} /> {m.streak}
                     </span>
                   ) : null}
-                  {m.id === pod.created_by ? (
+                  {m.id === ownerId ? (
                     <span className="caption row" style={{ gap: 4 }}>
                       <Crown size={13} /> owner
                     </span>
@@ -426,30 +376,30 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
         const mine = entry.author.id === me.id;
         return (
           <div
-            key={entry.checkin.id}
+            key={entry.checkinId}
             className="row"
             style={{ alignItems: 'flex-end', flexDirection: mine ? 'row-reverse' : 'row', '--i': idx } as React.CSSProperties}
           >
-            {!mine ? <Avatar id={entry.author.id} name={entry.author.display_name} /> : null}
+            {!mine ? <Avatar id={entry.author.id} name={entry.author.displayName} /> : null}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: mine ? 'flex-end' : 'flex-start', flex: 1 }}>
               <span className="caption">
-                {mine ? 'you' : entry.author.display_name} - {postedAt(entry.checkin.created_at)}
+                {mine ? 'you' : entry.author.displayName} - {postedAt(entry.postedAt)}
               </span>
               <div
                 className={`bubble${mine ? ' mine' : ''}`}
                 style={{ cursor: mine ? 'default' : 'pointer' }}
                 role={mine ? undefined : 'button'}
                 tabIndex={mine ? undefined : 0}
-                aria-label={mine ? undefined : `React to ${entry.author.display_name}'s check-in`}
+                aria-label={mine ? undefined : `React to ${entry.author.displayName}'s check-in`}
                 onClick={() => {
                   if (mine) return;
                   feedback('tap');
-                  setPickerFor(pickerFor === entry.checkin.id ? null : entry.checkin.id);
+                  setPickerFor(pickerFor === entry.checkinId ? null : entry.checkinId);
                 }}
                 onKeyDown={(e) => {
                   if (!mine && (e.key === 'Enter' || e.key === ' ')) {
                     e.preventDefault();
-                    setPickerFor(pickerFor === entry.checkin.id ? null : entry.checkin.id);
+                    setPickerFor(pickerFor === entry.checkinId ? null : entry.checkinId);
                   }
                 }}
               >
@@ -458,38 +408,37 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
                     p.url ? (
                       <div key={p.id} style={{ position: 'relative' }}>
                         <img src={p.url} alt={p.angle} style={{ width: entry.photos.length > 1 ? 120 : 200 }} />
-                        {entry.author.blur_face ? <div className="blur-strip" style={{ borderRadius: 14 }} /> : null}
+                        {entry.author.blurFace ? <div className="blur-strip" style={{ borderRadius: 14 }} /> : null}
                       </div>
                     ) : null
                   )}
                 </div>
-                {entry.checkin.trained && entry.author.share_trained ? (
+                {entry.trained ? (
                   <p className="row" style={{ margin: '8px 0 0', fontSize: 13, fontWeight: 700, gap: 5 }}>
                     <Dumbbell size={14} /> Trained today
                   </p>
                 ) : null}
-                {entry.checkin.note ? <p style={{ margin: '6px 0 0', fontSize: 14 }}>{entry.checkin.note}</p> : null}
+                {entry.note ? <p style={{ margin: '6px 0 0', fontSize: 14 }}>{entry.note}</p> : null}
                 {entry.reactions.length ? (
                   <span key={entry.reactions.map((r) => r.emoji).join('')} className="tapback">
                     {entry.reactions.map((r) => r.emoji).join(' ')}
                   </span>
                 ) : null}
               </div>
-              {pickerFor === entry.checkin.id ? (
+              {pickerFor === entry.checkinId ? (
                 <div className="reaction-picker">
                   {REACTIONS.map((emoji) => (
                     <button
                       key={emoji}
                       aria-label={`React with ${emoji}`}
-                      className={entry.reactions.some((r) => r.user_id === me.id && r.emoji === emoji) ? 'chosen' : ''}
+                      className={entry.reactions.some((r) => r.userId === me.id && r.emoji === emoji) ? 'chosen' : ''}
                       style={{ animationDelay: `${REACTIONS.indexOf(emoji) * 35}ms` }}
                       onClick={async (e) => {
-                        const removing = entry.reactions.some((r) => r.user_id === me.id && r.emoji === emoji);
+                        const removing = entry.reactions.some((r) => r.userId === me.id && r.emoji === emoji);
                         if (!removing) emojiBurst(e.currentTarget, emoji);
                         feedback(removing ? 'tap' : 'pop');
                         setPickerFor(null);
-                        await toggleReaction(entry.checkin.id, emoji);
-                        await load();
+                        await toggleReaction({ checkinId: entry.checkinId, emoji }).catch(() => {});
                       }}
                     >
                       {emoji}
@@ -513,15 +462,15 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
               <span />
             </span>
             <span className="caption">
-              waiting on {waiting.map((w) => (w.id === me.id ? 'you' : w.display_name)).join(', ')}
+              waiting on {waiting.map((w) => (w.id === me.id ? 'you' : w.displayName)).join(', ')}
             </span>
           </div>
           {waiting
             .filter((w) => w.id !== me.id)
             .map((w) => (
               <div key={w.id} className="row member-in" style={{ marginTop: 10 }}>
-                <Avatar id={w.id} name={w.display_name} size={30} />
-                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{w.display_name}</span>
+                <Avatar id={w.id} name={w.displayName} size={30} />
+                <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{w.displayName}</span>
                 {nudged.has(w.id) ? (
                   <span className="caption row nudged-in" style={{ gap: 4 }}>
                     <Check size={13} /> nudged
@@ -533,13 +482,12 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
                     onClick={async (e) => {
                       emojiBurst(e.currentTarget, '\u{1F514}', 3);
                       feedback('nudge');
-                      setNudged(new Set([...nudged, w.id]));
-                      await nudge(pod.id, w.id, today).catch(() => {});
+                      setJustNudged(new Set([...justNudged, w.id]));
+                      await nudgeMutation({ podId: pod._id, toUser: w.id, day: today }).catch(() => {});
                       notify({
                         kind: 'nudge',
-                        title: `Nudged ${w.display_name}`,
+                        title: `Nudged ${w.displayName}`,
                         body: 'They will get a heads-up to post.',
-                        ephemeral: true,
                         silent: true,
                       });
                     }}
