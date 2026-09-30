@@ -1,7 +1,8 @@
 import { AtSign, BellRing, Camera, Flame, Heart, Info, UserPlus } from 'lucide-react';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-import { getPrefs } from './lib/prefs';
+import { getPrefs, setPrefs } from './lib/prefs';
+import { disablePush, enablePush, pushSupported } from './lib/push';
 import { feedback, type Cue } from './lib/sfx';
 
 /**
@@ -125,7 +126,9 @@ export function NotificationProvider({
       }
 
       if (hidden) {
-        if (!n.ephemeral) void showSystemNotification(notice);
+        // With web push on, the server sends this one; showing it here too
+        // would notify twice.
+        if (!n.ephemeral && !getPrefs().push) void showSystemNotification(notice);
         return;
       }
       if (!n.silent) feedback(CUE[n.kind]);
@@ -213,6 +216,21 @@ export async function requestSystemNotifications(): Promise<SystemNotifyState> {
   const state = systemNotifyState();
   if (state !== 'default') return state;
   return (await Notification.requestPermission()) as SystemNotifyState;
+}
+
+/** The one way notifications get switched on: ask permission, then
+ *  subscribe to web push where it is configured. */
+export async function turnOnNotifications(): Promise<SystemNotifyState> {
+  const state = await requestSystemNotifications();
+  if (state !== 'granted') return state;
+  setPrefs({ notifications: true });
+  if (pushSupported()) await enablePush().catch((e) => console.error('push subscribe failed', e));
+  return state;
+}
+
+export async function turnOffNotifications(): Promise<void> {
+  setPrefs({ notifications: false });
+  await disablePush().catch(() => {});
 }
 
 async function showSystemNotification(n: Notice): Promise<void> {

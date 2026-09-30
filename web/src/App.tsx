@@ -12,7 +12,8 @@ import {
   type Profile,
 } from './lib/api';
 import { toDayKey } from './lib/date';
-import { setPrefs, usePrefs } from './lib/prefs';
+import { getPrefs, usePrefs } from './lib/prefs';
+import { enablePush } from './lib/push';
 import { feedback } from './lib/sfx';
 import { computeStreak } from './lib/streak';
 import { supabase } from './lib/supabase';
@@ -20,8 +21,8 @@ import {
   ago,
   NoticeIcon,
   NotificationProvider,
-  requestSystemNotifications,
   systemNotifyState,
+  turnOnNotifications,
   useNotify,
   type Tab,
 } from './notify';
@@ -107,6 +108,7 @@ function Shell({
 
   useLiveActivity(me);
   useDailyReminder();
+  usePushSync();
 
   const go = (t: Tab) => {
     if (t !== tab) feedback('tap');
@@ -302,12 +304,9 @@ function InboxSheet({ onClose, onNavigate }: { onClose: () => void; onNavigate: 
                 className="btn-primary"
                 style={{ padding: '7px 14px', fontSize: 13 }}
                 onClick={async () => {
-                  const next = await requestSystemNotifications();
+                  const next = await turnOnNotifications();
                   setPermission(next);
-                  if (next === 'granted') {
-                    setPrefs({ notifications: true });
-                    feedback('toggle');
-                  }
+                  if (next === 'granted') feedback('toggle');
                 }}
               >
                 Turn on
@@ -463,6 +462,22 @@ function useDailyReminder() {
     arm();
     return () => window.clearTimeout(timer);
   }, [reminder, reminderAt, notify]);
+}
+
+/**
+ * Keeps this device's push subscription current: re-registers on open (the
+ * browser may have rotated the endpoint) and whenever the reminder settings
+ * change, so the server reminds at the right local time.
+ */
+function usePushSync() {
+  const { reminder, reminderAt, push } = usePrefs();
+  useEffect(() => {
+    if (!push || systemNotifyState() !== 'granted') return;
+    const t = window.setTimeout(() => {
+      if (getPrefs().push) void enablePush().catch(() => {});
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [push, reminder, reminderAt]);
 }
 
 /* -------------------------------------------------------------- name gate */

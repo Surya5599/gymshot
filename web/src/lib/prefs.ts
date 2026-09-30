@@ -6,13 +6,15 @@ export type Prefs = {
   sounds: boolean;
   haptics: boolean;
   notifications: boolean;
+  /** This browser holds a web push subscription (see lib/push.ts). */
+  push: boolean;
   reminder: boolean;
   /** Local wall-clock time, HH:MM. */
   reminderAt: string;
 };
 
 const KEY = 'gymshot.prefs';
-const DEFAULTS: Prefs = { sounds: true, haptics: true, notifications: false, reminder: true, reminderAt: '19:00' };
+const DEFAULTS: Prefs = { sounds: true, haptics: true, notifications: false, push: false, reminder: true, reminderAt: '19:00' };
 
 let current: Prefs = read();
 const listeners = new Set<() => void>();

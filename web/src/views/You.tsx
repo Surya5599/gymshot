@@ -15,10 +15,12 @@ import { getManagementUrl } from '../lib/billing';
 import { setPrefs, usePrefs } from '../lib/prefs';
 import { feedback, play } from '../lib/sfx';
 import { supabase } from '../lib/supabase';
+import { forgetPushOnSignOut, pushSupported } from '../lib/push';
 import {
-  requestSystemNotifications,
   sendTestNotification,
   systemNotifyState,
+  turnOffNotifications,
+  turnOnNotifications,
   useNotify,
   type SystemNotifyState,
 } from '../notify';
@@ -177,7 +179,12 @@ export default function YouView({
         <button
           className="btn-secondary row"
           style={{ gap: 8, marginTop: 12 }}
-          onClick={() => void supabase.auth.signOut()}
+          onClick={async () => {
+            // Before signing out: the device must stop getting this
+            // account's pushes, and deleting the row needs the session.
+            await forgetPushOnSignOut();
+            await supabase.auth.signOut();
+          }}
         >
           <LogOut size={15} /> Sign out
         </button>
@@ -241,14 +248,13 @@ function AlertsCard() {
 
   const toggleSystem = async (on: boolean) => {
     if (!on) {
-      setPrefs({ notifications: false });
       feedback('toggle');
+      await turnOffNotifications();
       return;
     }
-    const next = await requestSystemNotifications();
+    const next = await turnOnNotifications();
     setPermission(next);
     if (next === 'granted') {
-      setPrefs({ notifications: true });
       feedback('toggle');
       void sendTestNotification();
     }
@@ -299,7 +305,11 @@ function AlertsCard() {
           <BellRing size={18} style={{ color: 'var(--ink-soft)' }} />
           <div>
             <strong>System notifications</strong>
-            <p className="caption">Posts, reactions, and nudges while GymShot is in the background</p>
+            <p className="caption">
+              {pushSupported()
+                ? 'Posts, reactions, nudges, and your reminder - even with GymShot closed'
+                : 'Posts, reactions, and nudges while GymShot is in the background'}
+            </p>
           </div>
         </div>
         <Toggle on={systemOn} onChange={(v) => void toggleSystem(v)} />
