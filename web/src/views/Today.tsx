@@ -1,10 +1,26 @@
-import { BellRing, Camera, Loader2, SwitchCamera, Timer, TimerOff, Upload, X } from 'lucide-react';
+import {
+  BellRing,
+  Camera,
+  Check,
+  Dumbbell,
+  Flame,
+  Loader2,
+  RotateCcw,
+  SwitchCamera,
+  Timer,
+  TimerOff,
+  Upload,
+  X,
+} from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { MonthGrid, Toggle } from '../components';
+import { Celebration, CountUp, type CelebrationInfo } from '../fx';
 import {
   ANGLES,
   ensureCheckin,
+  listPods,
   myCheckin,
   myLoggedDays,
   myTimeline,
@@ -16,18 +32,32 @@ import {
   type CheckIn,
 } from '../lib/api';
 import { formatDay, toDayKey, type DayKey } from '../lib/date';
-import { supabase } from '../lib/supabase';
+import { feedback, play } from '../lib/sfx';
 import { computeStreak } from '../lib/streak';
+import { supabase } from '../lib/supabase';
+import { useNotify } from '../notify';
 
-export default function TodayView({ active }: { active: boolean }) {
+/** Streak-at-risk warnings start in the evening, when there is still time. */
+const AT_RISK_HOUR = 17;
+
+export default function TodayView({ active, boothRequest }: { active: boolean; boothRequest: number }) {
   const today = toDayKey();
+  const { notify } = useNotify();
   const [days, setDays] = useState<DayKey[]>([]);
   const [checkin, setCheckin] = useState<CheckIn | null>(null);
   const [photoUrls, setPhotoUrls] = useState<Partial<Record<Angle, string>>>({});
   const [note, setNote] = useState('');
-  const [busyAngle, setBusyAngle] = useState<Angle | null>(null);
+  const [busyAngles, setBusyAngles] = useState<Set<Angle>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [nudgers, setNudgers] = useState<string[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [booth, setBooth] = useState<Angle[] | null>(null);
+  const [celebration, setCelebration] = useState<CelebrationInfo | null>(null);
+
+  // Whether today already had a photo, and whether this session already
+  // celebrated it - the reward plays once, for the first photo of the day.
+  const hadPhotos = useRef(false);
+  const celebrated = useRef<DayKey | null>(null);
 
   const load = useCallback(async () => {
     const [logged, mine, nudges] = await Promise.all([
@@ -39,6 +69,7 @@ export default function TodayView({ active }: { active: boolean }) {
     setDays(logged);
     setCheckin(mine?.checkin ?? null);
     setNote(mine?.checkin.note ?? '');
+    hadPhotos.current = !!mine && mine.photos.length > 0;
     if (mine && mine.photos.length) {
       const urls = await signPhotoUrls(mine.photos.map((p) => p.storage_path));
       const next: Partial<Record<Angle, string>> = {};
@@ -50,6 +81,8 @@ export default function TodayView({ active }: { active: boolean }) {
     } else {
       setPhotoUrls({});
     }
+    setLoaded(true);
+    return logged;
   }, [today]);
 
   // Refresh quietly whenever the tab is shown; existing state keeps
@@ -60,6 +93,9 @@ export default function TodayView({ active }: { active: boolean }) {
   }, [active, load]);
 
   const streak = computeStreak(days, today);
+  const taken = ANGLES.filter((a) => photoUrls[a]);
+  const missing = ANGLES.filter((a) => !photoUrls[a]);
+  const hasPhotosToday = taken.length > 0;
 
   // A nudge should land while the tab is open, not on the next visit.
   useEffect(() => {
@@ -74,23 +110,66 @@ export default function TodayView({ active }: { active: boolean }) {
     };
   }, [load]);
 
-  const [cameraFor, setCameraFor] = useState<Angle | null>(null);
+  // Hidden capture input: where the in-page camera is unavailable, the booth
+  // falls back to the phone's own camera app, one angle at a time.
+  const fallbackInput = useRef<HTMLInputElement>(null);
+  const fallbackAngle = useRef<Angle>('front');
+
+  const openBooth = useCallback(
+    (angles: Angle[]) => {
+      if (angles.length === 0) return;
+      if (liveCameraSupported()) {
+        setBooth(angles);
+      } else {
+        fallbackAngle.current = angles[0];
+        fallbackInput.current?.click();
+      }
+    },
+    []
+  );
+
+  // The shutter in the tab bar asks for the booth from anywhere.
+  const lastRequest = useRef(boothRequest);
+  useEffect(() => {
+    if (boothRequest === lastRequest.current) return;
+    lastRequest.current = boothRequest;
+    openBooth(missing.length ? [...missing] : [...ANGLES]);
+    // Only a new request should open the booth, not a change in photos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boothRequest, openBooth]);
 
   const onPick = async (angle: Angle, file: Blob | undefined) => {
     if (!file) return;
-    setBusyAngle(angle);
+    const first = !hadPhotos.current && celebrated.current !== today;
+    if (first) celebrated.current = today;
+    setBusyAngles((s) => new Set(s).add(angle));
     setError(null);
     try {
       await uploadPhoto(today, angle, file);
-      await load();
+      const logged = await load();
+      play('develop');
+      if (first) {
+        const s = computeStreak(logged, today);
+        const squads = await listPods()
+          .then((p) => p.length)
+          .catch(() => 0);
+        setCelebration({ streak: s.current, best: s.best, squads });
+      }
     } catch (e) {
+      if (first) celebrated.current = null;
       setError(e instanceof Error ? e.message : 'Upload failed.');
+      notify({ kind: 'info', title: 'That photo did not upload', body: 'Check your connection and try again.', ephemeral: true });
     } finally {
-      setBusyAngle(null);
+      setBusyAngles((s) => {
+        const next = new Set(s);
+        next.delete(angle);
+        return next;
+      });
     }
   };
 
   const setTrained = async (v: boolean) => {
+    feedback('toggle');
     const c = checkin ?? (await ensureCheckin(today));
     await updateCheckin(c.id, { trained: v });
     await load();
@@ -100,11 +179,28 @@ export default function TodayView({ active }: { active: boolean }) {
     const c = checkin ?? (await ensureCheckin(today));
     await updateCheckin(c.id, { note: note.trim() ? note : null });
     await load();
+    notify({ kind: 'info', title: 'Note saved', body: 'Your squad sees it under your photos.', ephemeral: true, silent: true });
+    feedback('keep');
   };
+
+  const hour = new Date().getHours();
+  const atRisk = loaded && !hasPhotosToday && streak.current > 0 && hour >= AT_RISK_HOUR;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
+      <input
+        ref={fallbackInput}
+        type="file"
+        accept="image/*"
+        capture="user"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          void onPick(fallbackAngle.current, e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+
+      <div className="stagger" style={{ '--i': 0 } as React.CSSProperties}>
         <h1 style={{ fontSize: 28 }}>Today</h1>
         <p className="caption" style={{ marginTop: 2 }}>
           One check-in a day. Your squads see today only.
@@ -112,58 +208,113 @@ export default function TodayView({ active }: { active: boolean }) {
       </div>
 
       {/* A nudge is a squad-mate asking where today's photo is. */}
-      {nudgers.length > 0 && !streak.loggedToday ? (
-        <div className="card row" style={{ background: 'var(--accent-soft)' }}>
-          <BellRing size={18} style={{ color: 'var(--accent-ink)', flexShrink: 0 }} />
+      {nudgers.length > 0 && !hasPhotosToday ? (
+        <div className="card row banner-in" style={{ background: 'var(--accent-soft)' }}>
+          <BellRing size={18} className="bell-ring loop" style={{ color: 'var(--accent-ink)', flexShrink: 0 }} />
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--accent-ink)' }}>
             {nudgers.join(', ')} nudged you - post today's photo.
           </span>
         </div>
       ) : null}
 
-      <div className="card row" style={{ justifyContent: 'space-around', textAlign: 'center' }}>
-        <Stat value={String(streak.current)} label="day streak" highlight={streak.loggedToday} />
-        <Stat value={String(streak.best)} label="best ever" />
-        <Stat value={`${streak.monthLogged}/${streak.monthDays}`} label="this month" />
+      {atRisk ? (
+        <div className="card row banner-in at-risk">
+          <Flame size={22} className="flicker" style={{ flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>
+            Your {streak.current}-day streak ends at midnight.
+          </span>
+        </div>
+      ) : null}
+
+      <div
+        className="card row stagger"
+        style={{ justifyContent: 'space-around', textAlign: 'center', '--i': 1 } as React.CSSProperties}
+      >
+        <Stat
+          value={streak.current}
+          label="day streak"
+          highlight={streak.loggedToday}
+          icon={<Flame size={18} className={streak.loggedToday ? 'flicker' : ''} />}
+        />
+        <Stat value={streak.best} label="best ever" />
+        <Stat value={streak.monthLogged} suffix={`/${streak.monthDays}`} label="this month" />
       </div>
 
-      <div className="print-card">
+      {loaded && missing.length > 0 ? (
+        <button
+          className="booth-cta stagger"
+          style={{ '--i': 2 } as React.CSSProperties}
+          onClick={() => {
+            feedback('tap');
+            openBooth([...missing]);
+          }}
+        >
+          <span className="booth-cta-icon">
+            <Camera size={24} strokeWidth={2.2} />
+          </span>
+          <span style={{ flex: 1, textAlign: 'left' }}>
+            <span className="booth-cta-title">{hasPhotosToday ? 'Finish the booth' : 'Step into the booth'}</span>
+            <span className="booth-cta-sub">
+              {hasPhotosToday
+                ? `${missing.length} angle${missing.length === 1 ? '' : 's'} left - ${missing.join(', ')}`
+                : 'Front, side, back. Three shots, one flow.'}
+            </span>
+          </span>
+        </button>
+      ) : null}
+
+      <div className="print-card stagger" style={{ '--i': 3 } as React.CSSProperties}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
           {ANGLES.map((angle) => (
             <AngleTile
               key={angle}
               angle={angle}
               url={photoUrls[angle]}
-              busy={busyAngle === angle}
+              busy={busyAngles.has(angle)}
               onPick={(f) => void onPick(angle, f)}
-              onCamera={() => setCameraFor(angle)}
+              onCamera={() => openBooth([angle])}
             />
           ))}
         </div>
         <div className="print-footer">
           <span className="brand">GymShot</span>
+          {missing.length === 0 ? (
+            <span className="print-stamp">
+              <Check size={12} strokeWidth={3} /> posted
+            </span>
+          ) : null}
           <span className="caption">{formatDay(today)}</span>
         </div>
         {error ? <p className="error" role="alert" style={{ marginTop: 10 }}>{error}</p> : null}
       </div>
 
-      {cameraFor ? (
-        <CameraModal
-          angle={cameraFor}
-          onClose={() => setCameraFor(null)}
-          onCapture={(blob) => {
-            const angle = cameraFor;
-            setCameraFor(null);
-            void onPick(angle, blob);
-          }}
-        />
-      ) : null}
+      {/* Full-screen moments render on <body>, above the tab bar and clear
+          of any animated ancestor. */}
+      {booth
+        ? createPortal(
+            <BoothModal
+              angles={booth}
+              onShot={(angle, blob) => void onPick(angle, blob)}
+              onClose={() => setBooth(null)}
+            />,
+            document.body
+          )
+        : null}
 
-      <div className="card">
+      {celebration && !booth
+        ? createPortal(<Celebration info={celebration} onDone={() => setCelebration(null)} />, document.body)
+        : null}
+
+      <div className="card stagger" style={{ '--i': 4 } as React.CSSProperties}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <div>
-            <strong>Trained today</strong>
-            <p className="caption">Just the fact, not the sets.</p>
+          <div className="row" style={{ gap: 10 }}>
+            <span className={`trained-icon${checkin?.trained ? ' on' : ''}`}>
+              <Dumbbell size={17} />
+            </span>
+            <div>
+              <strong>Trained today</strong>
+              <p className="caption">Just the fact, not the sets.</p>
+            </div>
           </div>
           <Toggle on={checkin?.trained ?? false} onChange={(v) => void setTrained(v)} />
         </div>
@@ -174,17 +325,20 @@ export default function TodayView({ active }: { active: boolean }) {
           placeholder="A note for the squad (optional)"
           maxLength={200}
         />
-        <button
-          className="btn-secondary"
-          style={{ marginTop: 10, fontSize: 14, padding: '9px 20px' }}
-          disabled={(checkin?.note ?? '') === (note.trim() ? note : '')}
-          onClick={() => void saveNote()}
-        >
-          Save note
-        </button>
+        <div className="row" style={{ justifyContent: 'space-between', marginTop: 10 }}>
+          <button
+            className="btn-secondary"
+            style={{ fontSize: 14, padding: '9px 20px' }}
+            disabled={(checkin?.note ?? '') === (note.trim() ? note : '')}
+            onClick={() => void saveNote()}
+          >
+            Save note
+          </button>
+          <span className="caption">{note.length}/200</span>
+        </div>
       </div>
 
-      <div className="card">
+      <div className="card stagger" style={{ '--i': 5 } as React.CSSProperties}>
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
           <p className="eyebrow">This month</p>
           <span className="caption">
@@ -197,10 +351,38 @@ export default function TodayView({ active }: { active: boolean }) {
   );
 }
 
-function Stat({ value, label, highlight }: { value: string; label: string; highlight?: boolean }) {
+function Stat({
+  value,
+  suffix,
+  label,
+  highlight,
+  icon,
+}: {
+  value: number;
+  suffix?: string;
+  label: string;
+  highlight?: boolean;
+  icon?: React.ReactNode;
+}) {
   return (
     <div>
-      <div style={{ fontSize: 26, fontWeight: 800, color: highlight ? 'var(--accent)' : 'var(--ink)' }}>{value}</div>
+      <div
+        className="row"
+        style={{
+          gap: 4,
+          justifyContent: 'center',
+          fontSize: 26,
+          fontWeight: 800,
+          color: highlight ? 'var(--accent)' : 'var(--ink)',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {icon ? <span style={{ display: 'flex', color: highlight ? 'var(--accent)' : 'var(--ink-faint)' }}>{icon}</span> : null}
+        <span>
+          <CountUp value={value} />
+          {suffix ? <span style={{ color: 'var(--ink-faint)', fontSize: 18 }}>{suffix}</span> : null}
+        </span>
+      </div>
       <div className="caption">{label}</div>
     </div>
   );
@@ -229,6 +411,7 @@ function AngleTile({
   const captureInput = useRef<HTMLInputElement>(null);
 
   const takePhoto = () => {
+    feedback('tap');
     if (liveCameraSupported()) onCamera();
     else captureInput.current?.click();
   };
@@ -251,8 +434,14 @@ function AngleTile({
       />
       {url ? (
         <>
-          <img src={url} alt={`${angle} photo`} onClick={takePhoto} style={{ cursor: 'pointer' }} />
+          {/* Keyed by URL, so a new or retaken photo develops in again. */}
+          <img key={url} className="developed" src={url} alt={`${angle} photo`} onClick={takePhoto} style={{ cursor: 'pointer' }} />
           <span className="label">{angle}</span>
+          {busy ? (
+            <div className="tile-busy">
+              <Loader2 size={22} className="spin" />
+            </div>
+          ) : null}
           <div className="tile-actions">
             <button title="Retake with camera" aria-label="Retake with camera" onClick={takePhoto}>
               <Camera size={14} />
@@ -263,9 +452,9 @@ function AngleTile({
           </div>
         </>
       ) : (
-        <div className="empty" onClick={takePhoto}>
-          {busy ? <Loader2 size={22} className="spin" /> : <Camera size={22} />}
-          {busy ? 'Uploading...' : angle}
+        <div className={`empty${busy ? ' busy' : ''}`} onClick={busy ? undefined : takePhoto}>
+          {busy ? <Loader2 size={22} className="spin" /> : <Camera size={22} className="empty-cam" />}
+          {busy ? 'Developing...' : angle}
           {!busy ? (
             <button
               className="btn-ghost"
@@ -284,33 +473,55 @@ function AngleTile({
   );
 }
 
+/* ------------------------------------------------------------------ booth */
+
+const POSE_TIPS: Record<Angle, string> = {
+  front: 'Face the lens, arms relaxed at your sides.',
+  side: 'Quarter turn left. Same spot as last time.',
+  back: 'Back to the camera. Stand tall and hold still.',
+};
+
+const TIMER_CYCLE: (0 | 3 | 5 | 10)[] = [0, 3, 5, 10];
+
 /**
- * Live camera capture. Preview is mirrored for the front camera (what people
- * expect from a mirror-selfie), but the saved frame is the true camera image
- * so photos stay comparable across days.
+ * The photobooth: live camera for a queue of angles, shot one after another
+ * without leaving. Each shot gets a review - it develops in, then Retake or
+ * Keep. Kept shots upload in the background while the next angle lines up.
+ *
+ * Preview is mirrored for the front camera (what people expect from a
+ * mirror-selfie), but the saved frame is the true camera image so photos stay
+ * comparable across days.
  */
-function CameraModal({
-  angle,
-  onCapture,
+function BoothModal({
+  angles,
+  onShot,
   onClose,
 }: {
-  angle: Angle;
-  onCapture: (blob: Blob) => void;
+  angles: Angle[];
+  onShot: (angle: Angle, blob: Blob) => void;
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const tickRef = useRef<number | undefined>(undefined);
+  const [step, setStep] = useState(0);
   const [facing, setFacing] = useState<'user' | 'environment'>('user');
   const [countdown, setCountdown] = useState<number | null>(null);
   const [delay, setDelay] = useState<0 | 3 | 5 | 10>(3);
   const [error, setError] = useState<string | null>(null);
   const [ghost, setGhost] = useState<{ url: string; day: DayKey } | null>(null);
   const [ghostOpacity, setGhostOpacity] = useState(0.4);
+  const [review, setReview] = useState<{ blob: Blob; url: string } | null>(null);
+  const [flash, setFlash] = useState(0);
+  const [kept, setKept] = useState<Set<Angle>>(new Set());
+
+  const angle = angles[step];
 
   // Ghost overlay: the most recent shot at this angle from a previous day,
   // laid over the live preview so today's photo lines up with the last one.
   useEffect(() => {
     let cancelled = false;
+    setGhost(null);
     const today = toDayKey();
     void (async () => {
       const rows = await myTimeline(angle);
@@ -351,6 +562,16 @@ function CameraModal({
     };
   }, [facing]);
 
+  // Leaving mid-countdown must not fire a capture into an unmounted booth.
+  useEffect(() => () => window.clearInterval(tickRef.current), []);
+
+  useEffect(
+    () => () => {
+      if (review) URL.revokeObjectURL(review.url);
+    },
+    [review]
+  );
+
   const capture = () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
@@ -372,46 +593,95 @@ function CameraModal({
     canvas.width = sw;
     canvas.height = sh;
     canvas.getContext('2d')?.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+    feedback('shutter');
+    setFlash((f) => f + 1);
     canvas.toBlob(
       (blob) => {
-        if (blob) onCapture(blob);
+        if (!blob) return;
+        setReview({ blob, url: URL.createObjectURL(blob) });
+        window.setTimeout(() => play('develop'), 120);
       },
       'image/jpeg',
       0.9
     );
   };
 
-  /** Shutter honours the selected delay, like the mobile capture screen. */
+  /** Shutter honours the selected delay, beeping down to the shot. */
   const shoot = () => {
-    if (countdown !== null) return;
+    if (countdown !== null || review || error) return;
     if (delay === 0) {
       capture();
       return;
     }
     let n = delay;
     setCountdown(n);
-    const tick = window.setInterval(() => {
+    feedback('tick');
+    tickRef.current = window.setInterval(() => {
       n -= 1;
       if (n <= 0) {
-        window.clearInterval(tick);
+        window.clearInterval(tickRef.current);
         setCountdown(null);
+        play('go');
         capture();
       } else {
         setCountdown(n);
+        feedback('tick');
       }
     }, 1000);
   };
 
-  const TIMER_CYCLE: (0 | 3 | 5 | 10)[] = [0, 3, 5, 10];
-  const cycleTimer = () => setDelay(TIMER_CYCLE[(TIMER_CYCLE.indexOf(delay) + 1) % TIMER_CYCLE.length]);
+  const retake = () => {
+    feedback('tap');
+    setReview(null);
+  };
+
+  const keep = () => {
+    if (!review) return;
+    feedback('keep');
+    onShot(angle, review.blob);
+    setKept((k) => new Set(k).add(angle));
+    setReview(null);
+    if (step + 1 < angles.length) setStep(step + 1);
+    else onClose();
+  };
+
+  // Keyboard: space shoots or keeps, R retakes, Escape leaves.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        if (review) keep();
+        else shoot();
+      } else if ((e.key === 'r' || e.key === 'R') && review) retake();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  const cycleTimer = () => {
+    feedback('tap');
+    setDelay(TIMER_CYCLE[(TIMER_CYCLE.indexOf(delay) + 1) % TIMER_CYCLE.length]);
+  };
 
   return (
-    <div className="camera-overlay" onClick={onClose}>
+    <div className="camera-overlay booth" onClick={onClose}>
+      {angles.length > 1 ? (
+        <div className="booth-steps" onClick={(e) => e.stopPropagation()}>
+          {angles.map((a, i) => (
+            <span key={a} className={`booth-step${i === step ? ' current' : ''}${kept.has(a) ? ' done' : ''}`}>
+              <span className="dot">{kept.has(a) ? <Check size={11} strokeWidth={3.2} /> : i + 1}</span>
+              {a}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
       <div className="camera-frame" onClick={(e) => e.stopPropagation()}>
         <video ref={videoRef} className={facing === 'user' ? 'mirrored' : ''} autoPlay playsInline muted />
         {/* Saved photos are true-camera images; mirror the ghost with the
             front-camera preview so your body and the ghost move the same way. */}
-        {ghost ? (
+        {ghost && !review ? (
           <img
             className={`ghost${facing === 'user' ? ' mirrored' : ''}`}
             src={ghost.url}
@@ -419,20 +689,37 @@ function CameraModal({
             style={{ opacity: ghostOpacity }}
           />
         ) : null}
-        {/* Thirds grid, same alignment aid as the mobile capture screen. */}
-        <div className="gridline v" style={{ left: '33.3%' }} />
-        <div className="gridline v" style={{ left: '66.6%' }} />
-        <div className="gridline h" style={{ top: '33.3%' }} />
-        <div className="gridline h" style={{ top: '66.6%' }} />
-        <span className="angle-badge">{angle}</span>
-        {countdown !== null ? <div className="countdown">{countdown}</div> : null}
+        {!review ? (
+          <>
+            {/* Thirds grid, same alignment aid as the mobile capture screen. */}
+            <div className="gridline v" style={{ left: '33.3%' }} />
+            <div className="gridline v" style={{ left: '66.6%' }} />
+            <div className="gridline h" style={{ top: '33.3%' }} />
+            <div className="gridline h" style={{ top: '66.6%' }} />
+          </>
+        ) : null}
+        {review ? <img className="review-shot" src={review.url} alt={`${angle} shot to review`} /> : null}
+        <span key={angle} className="angle-badge badge-in">
+          {angle}
+        </span>
+        {countdown !== null ? (
+          <div key={countdown} className="countdown count-pop">
+            {countdown}
+          </div>
+        ) : null}
+        {flash > 0 ? <div key={flash} className="flash" /> : null}
         {error ? (
           <div className="countdown" style={{ fontSize: 15, padding: 24, textAlign: 'center' }}>
             {error}
           </div>
         ) : null}
       </div>
-      {ghost ? (
+
+      <p key={`${angle}-${!!review}`} className="pose-tip" onClick={(e) => e.stopPropagation()}>
+        {review ? 'Happy with it? Keep it, or go again.' : POSE_TIPS[angle]}
+      </p>
+
+      {ghost && !review ? (
         <div className="ghost-slider" onClick={(e) => e.stopPropagation()}>
           <span>Ghost - {formatDay(ghost.day)}</span>
           <input
@@ -446,28 +733,54 @@ function CameraModal({
           />
         </div>
       ) : null}
+
       <div className="camera-controls" onClick={(e) => e.stopPropagation()}>
-        <button className="side" title="Cancel" aria-label="Close camera" onClick={onClose}>
-          <X size={20} />
-        </button>
-        <button className="side" title="Self-timer" aria-label="Cycle self-timer" onClick={cycleTimer} disabled={!!error}>
-          {delay === 0 ? <TimerOff size={18} /> : (
-            <span className="row" style={{ gap: 3 }}>
-              <Timer size={15} />
-              {delay}
-            </span>
-          )}
-        </button>
-        <button className="shutter" title="Take photo" aria-label="Take photo" onClick={shoot} disabled={!!error || countdown !== null} />
-        <button
-          className="side"
-          title="Flip camera"
-          aria-label="Flip camera"
-          onClick={() => setFacing(facing === 'user' ? 'environment' : 'user')}
-          disabled={!!error}
-        >
-          <SwitchCamera size={20} />
-        </button>
+        {review ? (
+          <>
+            <button className="review-btn" onClick={retake}>
+              <RotateCcw size={17} /> Retake
+            </button>
+            <button className="review-btn keep" onClick={keep}>
+              <Check size={18} strokeWidth={2.8} />
+              {step + 1 < angles.length ? `Keep, then ${angles[step + 1]}` : 'Keep it'}
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="side" title="Close" aria-label="Close camera" onClick={onClose}>
+              <X size={20} />
+            </button>
+            <button className="side" title="Self-timer" aria-label="Cycle self-timer" onClick={cycleTimer} disabled={!!error}>
+              {delay === 0 ? (
+                <TimerOff size={18} />
+              ) : (
+                <span className="row" style={{ gap: 3 }}>
+                  <Timer size={15} />
+                  {delay}
+                </span>
+              )}
+            </button>
+            <button
+              className={`shutter${countdown !== null ? ' counting' : ''}`}
+              title="Take photo"
+              aria-label="Take photo"
+              onClick={shoot}
+              disabled={!!error || countdown !== null}
+            />
+            <button
+              className="side"
+              title="Flip camera"
+              aria-label="Flip camera"
+              onClick={() => {
+                feedback('tap');
+                setFacing(facing === 'user' ? 'environment' : 'user');
+              }}
+              disabled={!!error}
+            >
+              <SwitchCamera size={20} />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

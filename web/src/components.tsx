@@ -139,7 +139,7 @@ export function MonthGrid({ logged, today }: { logged: readonly DayKey[]; today:
           .filter(Boolean)
           .join(' ');
         return (
-          <div key={day} className={cls}>
+          <div key={day} className={cls} style={{ '--d': day } as React.CSSProperties}>
             {day}
           </div>
         );
