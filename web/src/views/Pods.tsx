@@ -2,6 +2,7 @@ import { BellRing, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Copy, C
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { Avatar, ProUpsell } from '../components';
+import { emojiBurst } from '../fx';
 import {
   approveJoinRequest,
   cancelJoinRequest,
@@ -25,7 +26,9 @@ import {
   type Profile,
 } from '../lib/api';
 import { toDayKey } from '../lib/date';
+import { feedback } from '../lib/sfx';
 import { supabase } from '../lib/supabase';
+import { useNotify } from '../notify';
 
 const POD_EMOJI = ['\u{1F3CB}\u{FE0F}', '\u{1F525}', '\u{1F962}', '\u{1F31F}', '\u{1F436}', '\u{1F3AF}'];
 
@@ -62,12 +65,15 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
       {pods.map((p) => (
         <div
           key={p.id}
-          className="card row"
-          style={{ cursor: 'pointer' }}
+          className="card row squad-row stagger"
+          style={{ cursor: 'pointer', '--i': pods.indexOf(p) } as React.CSSProperties}
           role="button"
           tabIndex={0}
           aria-label={`Open squad ${p.name}`}
-          onClick={() => setOpen(p)}
+          onClick={() => {
+            feedback('tap');
+            setOpen(p);
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
@@ -106,6 +112,7 @@ export default function PodsView({ me, active }: { me: Profile; active: boolean 
                 style={{ padding: '7px 14px', fontSize: 13, gap: 5 }}
                 onClick={async () => {
                   await approveJoinRequest(r.pod_id, r.user_id);
+                  feedback('keep');
                   await load();
                 }}
               >
@@ -288,6 +295,7 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
   const [showMembers, setShowMembers] = useState(false);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const { notify } = useNotify();
 
   const load = useCallback(async () => {
     const [feed, sent, str] = await Promise.all([
@@ -347,6 +355,7 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
           aria-label="Copy invite code"
           onClick={async () => {
             await navigator.clipboard.writeText(pod.invite_code).catch(() => {});
+            feedback('keep');
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1600);
           }}
@@ -362,7 +371,10 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
           <button
             className="btn-ghost row"
             style={{ width: '100%', padding: 4, gap: 8, justifyContent: 'flex-start' }}
-            onClick={() => setShowMembers(!showMembers)}
+            onClick={() => {
+              feedback('tap');
+              setShowMembers(!showMembers);
+            }}
           >
             <span className="row" style={{ gap: 0 }}>
               {members.slice(0, 6).map((m, i) => (
@@ -374,11 +386,11 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
             <span className="caption" style={{ flex: 1, textAlign: 'left' }}>
               {members.length} of 8 members
             </span>
-            <ChevronDown size={16} style={{ transform: showMembers ? 'rotate(180deg)' : 'none' }} />
+            <ChevronDown size={16} style={{ transform: showMembers ? 'rotate(180deg)' : 'none', transition: 'transform 220ms ease' }} />
           </button>
           {showMembers
             ? members.map((m) => (
-                <div key={m.id} className="row" style={{ marginTop: 10, paddingLeft: 4 }}>
+                <div key={m.id} className="row member-in" style={{ marginTop: 10, paddingLeft: 4 }}>
                   <Avatar id={m.id} name={m.display_name} size={30} />
                   <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>
                     {m.display_name}
@@ -410,10 +422,14 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
         </p>
       ) : null}
 
-      {entries.map((entry) => {
+      {entries.map((entry, idx) => {
         const mine = entry.author.id === me.id;
         return (
-          <div key={entry.checkin.id} className="row" style={{ alignItems: 'flex-end', flexDirection: mine ? 'row-reverse' : 'row' }}>
+          <div
+            key={entry.checkin.id}
+            className="row"
+            style={{ alignItems: 'flex-end', flexDirection: mine ? 'row-reverse' : 'row', '--i': idx } as React.CSSProperties}
+          >
             {!mine ? <Avatar id={entry.author.id} name={entry.author.display_name} /> : null}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: mine ? 'flex-end' : 'flex-start', flex: 1 }}>
               <span className="caption">
@@ -426,7 +442,9 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
                 tabIndex={mine ? undefined : 0}
                 aria-label={mine ? undefined : `React to ${entry.author.display_name}'s check-in`}
                 onClick={() => {
-                  if (!mine) setPickerFor(pickerFor === entry.checkin.id ? null : entry.checkin.id);
+                  if (mine) return;
+                  feedback('tap');
+                  setPickerFor(pickerFor === entry.checkin.id ? null : entry.checkin.id);
                 }}
                 onKeyDown={(e) => {
                   if (!mine && (e.key === 'Enter' || e.key === ' ')) {
@@ -452,7 +470,7 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
                 ) : null}
                 {entry.checkin.note ? <p style={{ margin: '6px 0 0', fontSize: 14 }}>{entry.checkin.note}</p> : null}
                 {entry.reactions.length ? (
-                  <span className="tapback">
+                  <span key={entry.reactions.map((r) => r.emoji).join('')} className="tapback">
                     {entry.reactions.map((r) => r.emoji).join(' ')}
                   </span>
                 ) : null}
@@ -464,9 +482,13 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
                       key={emoji}
                       aria-label={`React with ${emoji}`}
                       className={entry.reactions.some((r) => r.user_id === me.id && r.emoji === emoji) ? 'chosen' : ''}
-                      onClick={async () => {
-                        await toggleReaction(entry.checkin.id, emoji);
+                      style={{ animationDelay: `${REACTIONS.indexOf(emoji) * 35}ms` }}
+                      onClick={async (e) => {
+                        const removing = entry.reactions.some((r) => r.user_id === me.id && r.emoji === emoji);
+                        if (!removing) emojiBurst(e.currentTarget, emoji);
+                        feedback(removing ? 'tap' : 'pop');
                         setPickerFor(null);
+                        await toggleReaction(entry.checkin.id, emoji);
                         await load();
                       }}
                     >
@@ -497,23 +519,32 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
           {waiting
             .filter((w) => w.id !== me.id)
             .map((w) => (
-              <div key={w.id} className="row" style={{ marginTop: 10 }}>
+              <div key={w.id} className="row member-in" style={{ marginTop: 10 }}>
                 <Avatar id={w.id} name={w.display_name} size={30} />
                 <span style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>{w.display_name}</span>
                 {nudged.has(w.id) ? (
-                  <span className="caption row" style={{ gap: 4 }}>
+                  <span className="caption row nudged-in" style={{ gap: 4 }}>
                     <Check size={13} /> nudged
                   </span>
                 ) : (
                   <button
                     className="btn-secondary row"
                     style={{ padding: '6px 14px', fontSize: 13, gap: 5 }}
-                    onClick={async () => {
-                      await nudge(pod.id, w.id, today).catch(() => {});
+                    onClick={async (e) => {
+                      emojiBurst(e.currentTarget, '\u{1F514}', 3);
+                      feedback('nudge');
                       setNudged(new Set([...nudged, w.id]));
+                      await nudge(pod.id, w.id, today).catch(() => {});
+                      notify({
+                        kind: 'nudge',
+                        title: `Nudged ${w.display_name}`,
+                        body: 'They will get a heads-up to post.',
+                        ephemeral: true,
+                        silent: true,
+                      });
                     }}
                   >
-                    <BellRing size={13} /> Nudge
+                    <BellRing size={13} className="bell-hover" /> Nudge
                   </button>
                 )}
               </div>
@@ -524,7 +555,9 @@ function PodThread({ pod, me, onBack }: { pod: Pod; me: Profile; onBack: () => v
       {/* The composer is the one-per-day rule made physical. */}
       <div className="card-flat" style={{ textAlign: 'center', marginTop: 8 }}>
         {myEntry ? (
-          <p className="notice">That is today. Come back tomorrow.</p>
+          <p className="notice row" style={{ justifyContent: 'center', gap: 6 }}>
+            <Check size={15} style={{ color: 'var(--moss)' }} /> That is today. Come back tomorrow.
+          </p>
         ) : (
           <p className="notice">
             Post today's photo from the <strong>Today</strong> tab - it lands in every squad you belong to.

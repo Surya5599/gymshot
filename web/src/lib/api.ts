@@ -425,3 +425,24 @@ export async function toggleReaction(checkinId: string, emoji: string): Promise<
     if (error) throw error;
   }
 }
+
+/* ------------------------------------------------------------- activity */
+
+const nameCache = new Map<string, string>();
+
+/** A squad-mate's display name, for announcing their activity. RLS only
+ *  exposes profiles of people who share a squad with me. */
+export async function profileName(userId: string): Promise<string> {
+  const hit = nameCache.get(userId);
+  if (hit) return hit;
+  const { data } = await supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle();
+  const name = (data?.display_name as string | undefined)?.trim() || 'A squad-mate';
+  nameCache.set(userId, name);
+  return name;
+}
+
+/** Who a check-in belongs to - to tell whether a reaction was to mine. */
+export async function checkinOwner(checkinId: string): Promise<string | null> {
+  const { data } = await supabase.from('checkins').select('user_id').eq('id', checkinId).maybeSingle();
+  return (data?.user_id as string | undefined) ?? null;
+}

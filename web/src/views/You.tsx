@@ -1,4 +1,4 @@
-import { ExternalLink, LogOut, Sparkles, Trash2 } from 'lucide-react';
+import { BellRing, ExternalLink, LogOut, Sparkles, Trash2, Volume2 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
 import { Avatar, ProUpsell, Toggle } from '../components';
@@ -12,7 +12,18 @@ import {
   type Profile,
 } from '../lib/api';
 import { getManagementUrl } from '../lib/billing';
+import { setPrefs, usePrefs } from '../lib/prefs';
+import { feedback, play } from '../lib/sfx';
 import { supabase } from '../lib/supabase';
+import { forgetPushOnSignOut, pushSupported } from '../lib/push';
+import {
+  sendTestNotification,
+  systemNotifyState,
+  turnOffNotifications,
+  turnOnNotifications,
+  useNotify,
+  type SystemNotifyState,
+} from '../notify';
 
 export default function YouView({
   me,
@@ -103,6 +114,8 @@ export default function YouView({
         </div>
       </div>
 
+      <AlertsCard />
+
       {isPro(me) ? (
         <div className="card">
           <div className="row">
@@ -166,7 +179,12 @@ export default function YouView({
         <button
           className="btn-secondary row"
           style={{ gap: 8, marginTop: 12 }}
-          onClick={() => void supabase.auth.signOut()}
+          onClick={async () => {
+            // Before signing out: the device must stop getting this
+            // account's pushes, and deleting the row needs the session.
+            await forgetPushOnSignOut();
+            await supabase.auth.signOut();
+          }}
         >
           <LogOut size={15} /> Sign out
         </button>
@@ -207,6 +225,141 @@ export default function YouView({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+const PERMISSION_NOTE: Record<SystemNotifyState, string | null> = {
+  granted: null,
+  default: null,
+  denied: 'Blocked in this browser. Allow notifications for this site in the browser settings, then come back.',
+  unsupported: 'This browser cannot show system notifications. Activity still appears in the bell.',
+  'needs-install': 'On iPhone, tap Share, then Add to Home Screen, and open GymShot from there to allow notifications.',
+};
+
+/** Sound, haptics, and notifications. These belong to this device, not the
+ *  account: a laptop can stay quiet while the phone chimes. */
+function AlertsCard() {
+  const prefs = usePrefs();
+  const { notify } = useNotify();
+  const [permission, setPermission] = useState<SystemNotifyState>(systemNotifyState);
+  const canVibrate = typeof navigator !== 'undefined' && 'vibrate' in navigator;
+  const systemOn = prefs.notifications && permission === 'granted';
+
+  const toggleSystem = async (on: boolean) => {
+    if (!on) {
+      feedback('toggle');
+      await turnOffNotifications();
+      return;
+    }
+    const next = await turnOnNotifications();
+    setPermission(next);
+    if (next === 'granted') {
+      feedback('toggle');
+      void sendTestNotification();
+    }
+  };
+
+  return (
+    <div className="card">
+      <p className="eyebrow">Sound and notifications</p>
+      <p className="caption" style={{ marginTop: 2 }}>
+        Set per device. Your phone can chime while your laptop stays quiet.
+      </p>
+
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 14 }}>
+        <div className="row" style={{ gap: 10 }}>
+          <Volume2 size={18} style={{ color: 'var(--ink-soft)' }} />
+          <div>
+            <strong>Sounds</strong>
+            <p className="caption">Shutter, countdown, reactions, and chimes</p>
+          </div>
+        </div>
+        <Toggle
+          on={prefs.sounds}
+          onChange={(v) => {
+            setPrefs({ sounds: v });
+            if (v) play('celebrate');
+          }}
+        />
+      </div>
+
+      {canVibrate ? (
+        <div className="row" style={{ justifyContent: 'space-between', marginTop: 14 }}>
+          <div style={{ paddingLeft: 28 }}>
+            <strong>Haptics</strong>
+            <p className="caption">A small buzz on taps and arrivals</p>
+          </div>
+          <Toggle
+            on={prefs.haptics}
+            onChange={(v) => {
+              setPrefs({ haptics: v });
+              if (v) navigator.vibrate?.([20, 40, 20]);
+            }}
+          />
+        </div>
+      ) : null}
+
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 14 }}>
+        <div className="row" style={{ gap: 10 }}>
+          <BellRing size={18} style={{ color: 'var(--ink-soft)' }} />
+          <div>
+            <strong>System notifications</strong>
+            <p className="caption">
+              {pushSupported()
+                ? 'Posts, reactions, nudges, and your reminder - even with GymShot closed'
+                : 'Posts, reactions, and nudges while GymShot is in the background'}
+            </p>
+          </div>
+        </div>
+        <Toggle on={systemOn} onChange={(v) => void toggleSystem(v)} />
+      </div>
+      {PERMISSION_NOTE[permission] ? (
+        <p className="caption" style={{ marginTop: 6, paddingLeft: 28, color: 'var(--ink-soft)' }}>
+          {PERMISSION_NOTE[permission]}
+        </p>
+      ) : null}
+
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 14 }}>
+        <div style={{ paddingLeft: 28 }}>
+          <strong>Daily reminder</strong>
+          <p className="caption">Only if you have not posted yet</p>
+        </div>
+        <Toggle
+          on={prefs.reminder}
+          onChange={(v) => {
+            setPrefs({ reminder: v });
+            feedback('toggle');
+          }}
+        />
+      </div>
+      {prefs.reminder ? (
+        <label className="row member-in" style={{ gap: 10, marginTop: 8, paddingLeft: 28 }}>
+          <span className="caption" style={{ color: 'var(--ink-soft)' }}>Remind me at</span>
+          <input
+            type="time"
+            value={prefs.reminderAt}
+            onChange={(e) => e.target.value && setPrefs({ reminderAt: e.target.value })}
+            style={{ width: 'auto', padding: '6px 10px', fontSize: 14 }}
+          />
+        </label>
+      ) : null}
+
+      <button
+        className="btn-ghost"
+        style={{ marginTop: 12, fontSize: 13, padding: '6px 0 0 28px' }}
+        onClick={() =>
+          notify({
+            kind: 'reaction',
+            emoji: '\u{1F525}',
+            title: 'This is what a reaction looks like',
+            body: 'Tap a toast to jump to where it happened.',
+            ephemeral: true,
+          })
+        }
+      >
+        Preview a notification
+      </button>
     </div>
   );
 }
